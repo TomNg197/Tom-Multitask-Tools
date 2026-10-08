@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:">
+<title>MetaTools</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<nav id="side">
+  <div id="profs"></div>
+  <button class="sideBtn add" id="addProf" title="Thêm hồ sơ">+</button>
+  <div class="grow"></div>
+  <button class="sideBtn" id="feedBtn" title="Tin mới (tất cả hồ sơ)">🔔<span class="cnt hidden" id="feedCnt"></span></button>
+  <button class="sideBtn" id="setBtn" title="Cài đặt">⚙️</button>
+</nav>
+<header id="top">
+  <div id="pname" class="pname">MetaTools</div>
+  <div class="tabs" id="tabs">
+    <button data-tab="slack">💬 Slack</button>
+    <button data-tab="google">📁 Drive / Gmail</button>
+    <button data-tab="git">🔀 Git</button>
+  </div>
+  <div class="grow"></div>
+  <div class="navs" id="navs">
+    <button data-nav="back" title="Quay lại">←</button>
+    <button data-nav="reload" title="Tải lại">⟳</button>
+    <button data-nav="home" title="Trang chủ">⌂</button>
+    <button data-nav="external" title="Mở bằng trình duyệt">↗</button>
+  </div>
+  <button class="ghost" id="editProf">Sửa hồ sơ</button>
+</header>
+<main id="main">
+  <section id="pWeb" class="panel"><div class="loading" id="webHint">Đang tải…</div></section>
+  <section id="pGit" class="panel hidden"></section>
+  <section id="pFeed" class="panel hidden"></section>
+  <section id="pSet" class="panel hidden"></section>
+  <section id="pEmpty" class="panel hidden">
+    <div class="empty">
+      <h1>Chào sếp 👋</h1>
+      <p>Mỗi <b>hồ sơ</b> = 1 tài khoản Slack + Drive/Gmail của nó + các nick Git gắn kèm.</p>
+      <button class="pri big" id="emptyAdd">+ Tạo hồ sơ đầu tiên</button>
+    </div>
+  </section>
+</main>
+<div id="modal" class="modal hidden"><div class="box" id="modalBox"></div></div>
+<div id="toast" class="toast hidden"></div>
+<script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,17 @@
+{
+  "name": "metatools",
+  "productName": "MetaTools",
+  "version": "2.0.0",
+  "description": "Nhi\u1ec1u t\u00e0i kho\u1ea3n Slack + Drive/Gmail + c\u1eb7p Git trong m\u1ed9t app",
+  "main": "main.js",
+  "author": "Buu for MetaX",
+  "license": "UNLICENSED",
+  "scripts": {
+    "start": "electron .",
+    "test": "node test/git.test.js"
+  },
+  "devDependencies": {
+    "@electron/packager": "^18.4.4",
+    "electron": "^44.7.0"
+  }
+}
