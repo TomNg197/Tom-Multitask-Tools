@@ -21,7 +21,7 @@ Sếp duyệt hướng B (tin 1543, 08/10 00:41 giờ VN): một app Electron ch
 - [x] Electron 44.7 (Chromium 152, vì Chromium 140 bị Slack báo sắp ngừng hỗ trợ). Selftest trong app thật (test/selftest.js, Xvfb) đạt 17/17
 - [x] Đóng gói: dist/MetaTools-2.0-{Windows-x64,Mac-AppleChip,Mac-Intel}.zip; bản Mac ký ad-hoc bằng rcodesign (~/.local/bin); zip giữ symlink
 - [x] HUONG_DAN.md; đã gửi ảnh và báo cáo (tin 1561, 1562)
-- [ ] GIAO FILE: chờ Hive Link v0.3.1 trên máy sếp (file >20MB). Đã đặt nhắc việc 09/10 10:30 để đẩy vào D:/MetaX/Tools/MetaTools2/
+- [x] Giao bằng GitHub Releases: repo TomNg197/Tom-Multitask-Tools; v2.0.0 (sếp đã tải bản Mac), v2.1.0 thêm dịch (selftest 20/20)
 
 ## Chạy test trên pod
 `METATOOLS_USERDATA=/tmp/mt2ud METATOOLS_SELFTEST=/tmp/mt2shots METATOOLS_GIT_TEST=1 ~/workspace/tools/elx.sh ~/workspace/tools/MetaTools2`
