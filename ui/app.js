@@ -274,6 +274,25 @@ function showConfirm(pr) {
   if (!pr.noChange) $('c_push').onclick = async () => { closeModal(); await call('git:push', { pairId: pr.pairId }); renderGit(); };
 }
 
+// ------------------------------------------------------------------ translation popup
+function showTranslate(t) {
+  const lang = { en: 'tiếng Anh', vi: 'tiếng Việt' };
+  const body = t.state === 'loading' ? '<div class="mute">Đang dịch…</div>'
+    : t.state === 'error' ? `<div class="warnbox">${esc(t.error)}</div>`
+      : `<div class="trOut" id="tr_out">${esc(t.text)}</div>`;
+  openModal(`<h3>Dịch sang ${lang[t.to] || t.to}</h3>
+  <div class="mute small" style="margin-bottom:6px">Đoạn gốc${t.from && t.from !== 'auto' ? ` (${esc(t.from)})` : ''}:</div><div class="trSrc">${esc(t.source)}</div>
+  <div class="mute small" style="margin:10px 0 6px">Bản dịch (Google Dịch):</div>${body}
+  <div class="row" style="margin-top:14px"><button class="sm" id="tr_swap">${t.to === 'en' ? '⇄ Dịch sang tiếng Việt' : '⇄ Dịch sang tiếng Anh'}</button><span class="grow"></span>
+  <button id="tr_close">Đóng</button>${t.state === 'done' ? `<button id="tr_copy">Copy</button>${t.editable ? '<button class="pri" id="tr_rep">Thay bằng bản dịch</button>' : ''}` : ''}</div>`);
+  $('tr_close').onclick = closeModal;
+  $('tr_swap').onclick = () => call('tr:again', { to: t.to === 'en' ? 'vi' : 'en' });
+  if (t.state === 'done') {
+    $('tr_copy').onclick = () => { navigator.clipboard.writeText(t.text); toast('Đã copy bản dịch'); };
+    if (t.editable) $('tr_rep').onclick = async () => { $('modal').classList.add('hidden'); await call('tr:replace', { text: t.text }); toast('Đã thay vào ô soạn'); };
+  }
+}
+
 // ------------------------------------------------------------------ events from main
 mt.on('ui:select', (id) => { cur.profileId = id; if (panel !== 'git') panel = 'web'; refresh(); });
 mt.on('ui:tab', (t) => { cur.tab = t; panel = t === 'git' ? 'git' : 'web'; render(); });
@@ -282,6 +301,7 @@ mt.on('ui:event', () => { if (panel === 'feed') renderFeed(); });
 mt.on('ui:viewState', (v) => { if (v.profileId === cur.profileId) $('webHint').textContent = 'Đang tải…'; });
 mt.on('git:task', (t) => { logId = t.id; const st = $('g_state'); if (st) { st.className = 'badge'; st.textContent = 'đang chạy…'; } });
 mt.on('git:line', addLine);
+mt.on('ui:translate', showTranslate);
 mt.on('git:done', async (d) => {
   if (panel === 'git') await renderGit();
   if (d.kind === 'prepare' && d.ok && d.prepared) showConfirm(d.prepared);

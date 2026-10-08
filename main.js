@@ -6,6 +6,7 @@ const path = require('path');
 const fs = require('fs');
 const Store = require('./lib/store');
 const G = require('./lib/git');
+const { translate } = require('./lib/translate');
 
 const SIDEBAR = 76;
 const TOPBAR = 52;
@@ -122,6 +123,7 @@ function setupSession(p) {
   const allowed = new Set(['notifications', 'media', 'clipboard-read', 'clipboard-sanitized-write', 'fullscreen', 'display-capture', 'speaker-selection']);
   ses.setPermissionRequestHandler((wc, perm, cb) => cb(allowed.has(perm)));
   ses.setPermissionCheckHandler((wc, perm) => allowed.has(perm));
+  try { ses.setSpellCheckerLanguages(['en-US', 'vi']); } catch (_) { try { ses.setSpellCheckerLanguages(['en-US']); } catch (__) { /* no dictionaries */ } }
   return ses;
 }
 
@@ -143,6 +145,17 @@ function ensureView(p, kind) {
   wc.on('page-title-updated', (e, title) => { if (kind === 'slack') setUnread(p.id, parseUnread(title)); });
   wc.on('did-finish-load', () => sendUI('ui:viewState', { profileId: p.id, kind, url: wc.getURL(), title: wc.getTitle() }));
   wc.on('did-navigate', () => sendUI('ui:viewState', { profileId: p.id, kind, url: wc.getURL(), title: wc.getTitle() }));
+  wc.on('context-menu', (e, params) => contextMenu(p, wc, params));
+  wc.on('before-input-event', (e, input) => {
+    // Ctrl/Cmd + Shift + E: translate the selected text to English
+    if (input.type === 'keyDown' && input.shift && (input.control || input.meta) && String(input.key).toLowerCase() === 'e') {
+      e.preventDefault();
+      wc.executeJavaScript(`(() => { const a = document.activeElement; let s = String(getSelection());
+        if (!s && a && (a.tagName === 'TEXTAREA' || a.tagName === 'INPUT')) s = a.value.slice(a.selectionStart, a.selectionEnd);
+        return { s, ed: !!(a && (a.isContentEditable || a.tagName === 'TEXTAREA' || a.tagName === 'INPUT')) }; })()`, true)
+        .then((r) => { if (r && r.s && r.s.trim()) doTranslate(p, wc, r.s, 'en', r.ed); }).catch(() => {});
+    }
+  });
   wc.loadURL(kind === 'slack' ? (p.slackUrl || 'https://app.slack.com/client') : googleHome(p));
   views[p.id][kind] = v;
   return v;
@@ -163,6 +176,41 @@ function routeLink(p, url, fromKind) {
   }
   if (/^https?:\/\//i.test(url)) shell.openExternal(url);
   return { action: 'deny' };
+}
+
+// ------------------------------------------------------------------ right-click menu + translation
+function contextMenu(p, wc, params) {
+  const items = [];
+  const sel = (params.selectionText || '').trim();
+  if (params.misspelledWord && params.dictionarySuggestions && params.dictionarySuggestions.length) {
+    params.dictionarySuggestions.slice(0, 5).forEach((s) => items.push({ label: s, click: () => wc.replaceMisspelling(s) }));
+    items.push({ type: 'separator' });
+  }
+  if (sel) {
+    items.push({ label: 'Dịch sang tiếng Anh  (Ctrl/Cmd+Shift+E)', click: () => doTranslate(p, wc, sel, 'en', params.isEditable) });
+    items.push({ label: 'Dịch sang tiếng Việt', click: () => doTranslate(p, wc, sel, 'vi', params.isEditable) });
+    items.push({ type: 'separator' });
+  }
+  if (params.linkURL) {
+    items.push({ label: 'Mở link bằng trình duyệt', click: () => shell.openExternal(params.linkURL) });
+    items.push({ label: 'Copy link', click: () => require('electron').clipboard.writeText(params.linkURL) });
+    items.push({ type: 'separator' });
+  }
+  if (params.isEditable) items.push({ label: 'Cắt', role: 'cut', enabled: !!sel });
+  items.push({ label: 'Copy', role: 'copy', enabled: !!sel });
+  if (params.isEditable) items.push({ label: 'Dán', role: 'paste' });
+  items.push({ label: 'Chọn tất cả', role: 'selectAll' });
+  Menu.buildFromTemplate(items).popup({ window: win });
+}
+
+let lastTr = null;   // { wc, text, editable, profileId }
+function doTranslate(p, wc, text, to, editable) {
+  lastTr = { wc, text, editable: !!editable, profileId: p.id };
+  sendUI('ui:translate', { state: 'loading', profileId: p.id, source: text.slice(0, 4500), to, editable: !!editable });
+  translate(text, to).then((r) => {
+    lastTr.result = r.text;
+    sendUI('ui:translate', { state: 'done', profileId: p.id, source: r.source, text: r.text, from: r.from, to, editable: !!editable });
+  }).catch((e) => sendUI('ui:translate', { state: 'error', profileId: p.id, source: text, to, error: e.message, editable: !!editable }));
 }
 
 function destroyViews(pid) {
@@ -354,6 +402,15 @@ const handlers = {
     return res;
   },
   'app:openExternal': (a) => { if (/^https:\/\//.test(a.url)) shell.openExternal(a.url); return true; },
+  'tr:again': (a) => { if (!lastTr) return false; const p = profile(lastTr.profileId); if (p) doTranslate(p, lastTr.wc, lastTr.text, a.to || 'en', lastTr.editable); return true; },
+  'tr:replace': async (a) => {
+    if (!lastTr || !lastTr.editable || lastTr.wc.isDestroyed()) throw new Error('Không còn ô soạn tin để thay chữ.');
+    current = { ...current, overlay: false }; layout();
+    lastTr.wc.focus();
+    await new Promise((r) => setTimeout(r, 60));
+    lastTr.wc.replace(String(a.text || lastTr.result || ''));
+    return true;
+  },
   'app:quit': () => { quitting = true; app.quit(); return true; },
 
   // ---------------------------------------------------------------- git

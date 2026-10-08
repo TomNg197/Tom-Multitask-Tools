@@ -1,4 +1,4 @@
-# MetaTools 2.0: Slack + Drive/Gmail + Git trong một app
+# MetaTools 2.1: Slack + Drive/Gmail + Git trong một app
 
 Một app duy nhất cho Mac và Windows. Không cần trình duyệt, không cần Python, không có server riêng: mọi thứ chạy trên máy, nói chuyện thẳng với Slack, Google, GitHub và GitLab.
 
@@ -34,6 +34,12 @@ Phần Git cần có **Git** trên máy:
 - **Chạy ngầm:** bấm X chỉ ẩn app xuống khay hệ thống (góc phải dưới trên Windows, thanh menu trên Mac); app vẫn nhận tin.
   - Thoát hẳn: chuột phải biểu tượng khay → **Thoát**, hoặc vào Cài đặt.
   - Trong Cài đặt có tuỳ chọn **tự chạy ngầm khi mở máy**.
+
+## Dịch nhanh (từ bản 2.1)
+- Bôi đen chữ trong Slack (hoặc Drive/Gmail) → **chuột phải → Dịch sang tiếng Anh / tiếng Việt**, hoặc bấm **Ctrl+Shift+E** (Mac: **Cmd+Shift+E**).
+- Bản dịch hiện trong app, có nút **Copy**. Nếu đang bôi đen trong **ô soạn tin** thì có thêm nút **Thay bằng bản dịch**: câu tiếng Việt được thay bằng tiếng Anh, gửi đi là xong.
+- Bản dịch dùng **Google Dịch**: chỉ đoạn chữ đang bôi đen được gửi đi, và chỉ khi bấm dịch.
+- Chuột phải giờ có đủ Cắt / Copy / Dán / Chọn tất cả, gợi ý sửa chính tả, và Mở/Copy link.
 
 ## Git: tab Git của mỗi hồ sơ
 1. **+ Thêm nick:** điền tên gợi nhớ, máy chủ (github.com, gitlab.com, gitlab.congty.vn...), username và email đứng tên commit, rồi chọn cách đăng nhập:

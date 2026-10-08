@@ -67,6 +67,23 @@ module.exports = async function selftest(ctx) {
     await wait(2500);
     chk('google link routed into profile google tab', /docs\.google\.com|accounts\.google\.com/.test(g.webContents.getURL()) && ctx.current().tab === 'google', g.webContents.getURL());
 
+    // translation: select Vietnamese text in an editable box of the visible Slack view, Ctrl+Shift+E, replace
+    await ui(`selectProfile(${JSON.stringify(p2.id)})`); await ui("selectTab('slack')"); await wait(1500);
+    await v2s.webContents.executeJavaScript(`(() => { const d = document.createElement('div'); d.id = 'mtt'; d.contentEditable = 'true';
+      d.textContent = 'Anh ơi build mới lên chưa? Em cần test gấp.'; d.style.cssText = 'position:fixed;top:10px;left:10px;z-index:99999;background:#ff0;padding:8px';
+      document.body.appendChild(d); d.focus(); const r = document.createRange(); r.selectNodeContents(d); const s = getSelection(); s.removeAllRanges(); s.addRange(r); return String(s); })()`);
+    v2s.webContents.focus();
+    v2s.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'E', modifiers: ['control', 'shift'] });
+    let trText = '';
+    for (let i = 0; i < 40 && !trText; i++) { await wait(300); trText = await ui("(document.getElementById('tr_out')||{}).textContent||''"); }
+    chk('shortcut translates selection to English', /build|test/i.test(trText) && !/ơi/.test(trText), trText);
+    await shot('09_translate');
+    await ui("document.getElementById('tr_rep').click()"); await wait(1200);
+    const after = await v2s.webContents.executeJavaScript("document.getElementById('mtt').textContent");
+    chk('replace puts the translation into the editor', after.trim() === trText.trim(), after);
+    const menuSrc = require('fs').readFileSync(require('path').join(__dirname, '..', 'main.js'), 'utf8');
+    chk('right-click menu has translate + edit items', /Dịch sang tiếng Anh/.test(menuSrc) && /role: 'paste'/.test(menuSrc));
+
     // git: fake repos (METATOOLS_GIT_TEST=1)
     const D = fs.mkdtempSync(path.join(require('os').tmpdir(), 'mt2sel-'));
     const sh = (c, cwd = D, env = {}) => execSync(c, { cwd, env: { ...process.env, ...env }, stdio: 'pipe' }).toString().trim();

@@ -1,6 +1,8 @@
-## MetaTools 2.0
+## MetaTools 2.1
 
 Một app cho Mac và Windows gồm nhiều tài khoản Slack, mỗi tài khoản có Drive/Gmail riêng và các nick Git gắn kèm. Không cần trình duyệt, không có server riêng.
+
+**Mới ở bản 2.1:** bôi đen chữ, chuột phải hoặc bấm Ctrl/Cmd+Shift+E để **dịch sang tiếng Anh/Việt**; có nút **Thay bằng bản dịch** khi đang soạn tin; chuột phải có đủ Cắt/Copy/Dán và gợi ý chính tả.
 
 **Tải về**
 
