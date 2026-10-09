@@ -92,16 +92,17 @@ function seg(id, opts, val) { return `<div class="seg" id="${id}">${opts.map(([v
 function profileForm(p) {
   p = p || { color: COLORS[(S.profiles.length) % COLORS.length], notify: true };
   openModal(`<h3>${p.id ? 'Sửa hồ sơ' : 'Hồ sơ mới'}</h3>
-  <div class="mute small">Mỗi hồ sơ có phiên đăng nhập Slack và Google riêng, không lẫn với hồ sơ khác.</div>
+  <div class="mute small">Mỗi hồ sơ có phiên đăng nhập Slack, Google và Trello riêng, không lẫn với hồ sơ khác.</div>
   <label>Tên hồ sơ</label><input id="f_name" value="${esc(p.name || '')}" placeholder="Công ty / Khách A / Cá nhân">
   <label>Workspace Slack</label><input id="f_slack" value="${esc(p.slackUrl || '')}" placeholder="https://tencongty.slack.com (để trống = chọn khi đăng nhập)">
   <label>Gmail đi kèm (mở Drive/Docs đúng tài khoản)</label><input id="f_gmail" value="${esc(p.gmail || '')}" placeholder="ten@congty.com">
+  <label>Trello (tuỳ chọn: link bảng hoặc workspace mở sẵn)</label><input id="f_trello" value="${esc(p.trelloUrl || '')}" placeholder="https://trello.com/w/tencongty (để trống = trang chủ Trello)">
   <label>Màu</label>${colorPicker('f_color', p.color)}
   <label style="display:flex;gap:8px;align-items:center;color:var(--ink)"><input type="checkbox" id="f_notify" style="width:auto" ${p.notify !== false ? 'checked' : ''}> Báo tin mới (chạy ngầm cả khi đóng cửa sổ)</label>
   <div class="row" style="margin-top:16px">${p.id ? '<button class="err" id="f_del">Xoá hồ sơ</button>' : ''}<span class="grow"></span><button id="f_cancel">Huỷ</button><button class="pri" id="f_save">Lưu</button></div>`);
   $('f_cancel').onclick = closeModal;
   $('f_save').onclick = async () => {
-    const r = await call('prof:save', { id: p.id, name: $('f_name').value, slackUrl: $('f_slack').value, gmail: $('f_gmail').value, color: pickedColor('f_color'), notify: $('f_notify').checked });
+    const r = await call('prof:save', { id: p.id, name: $('f_name').value, slackUrl: $('f_slack').value, gmail: $('f_gmail').value, trelloUrl: $('f_trello').value, color: pickedColor('f_color'), notify: $('f_notify').checked });
     closeModal(); cur.profileId = r.id; if (!p.id) { cur.tab = 'slack'; panel = 'web'; } await refresh();
   };
   if (p.id) $('f_del').onclick = async () => {
@@ -234,6 +235,7 @@ function pairForm(p) {
   const opts = (sel) => GS.accounts.map((a) => { const pr = prof(a.profileId); return `<option value="${a.id}" ${a.id === sel ? 'selected' : ''}>${esc(a.label)} (${esc(a.host)} / ${esc(a.user)})${pr && pr.id !== cur.profileId ? ' · ' + esc(pr.name) : ''}</option>`; }).join('');
   openModal(`<h3>${p.id ? 'Sửa cặp' : 'Cặp mới'}</h3>
   <label>Tên cặp</label><input id="p_name" value="${esc(p.name || '')}" placeholder="Game A → repo công ty">
+  <label>Trello (tuỳ chọn: link bảng hoặc workspace mở sẵn)</label><input id="f_trello" value="${esc(p.trelloUrl || '')}" placeholder="https://trello.com/w/tencongty (để trống = trang chủ Trello)">
   <label>Màu</label>${colorPicker('p_color', p.color)}
   <div class="card" style="margin-top:12px"><h2>Nguồn (pull về)</h2>
     <label>Nick nguồn</label><select id="p_srcAcc"><option value="">— chọn —</option>${opts(p.srcAcc)}</select>

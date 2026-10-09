@@ -1,4 +1,4 @@
-# MetaTools 2.1: Slack + Drive/Gmail + Git trong một app
+# MetaTools 2.1: Slack + Drive/Gmail + Trello + Git trong một app
 
 Một app duy nhất cho Mac và Windows. Không cần trình duyệt, không cần Python, không có server riêng: mọi thứ chạy trên máy, nói chuyện thẳng với Slack, Google, GitHub và GitLab.
 
@@ -34,6 +34,12 @@ Phần Git cần có **Git** trên máy:
 - **Chạy ngầm:** bấm X chỉ ẩn app xuống khay hệ thống (góc phải dưới trên Windows, thanh menu trên Mac); app vẫn nhận tin.
   - Thoát hẳn: chuột phải biểu tượng khay → **Thoát**, hoặc vào Cài đặt.
   - Trong Cài đặt có tuỳ chọn **tự chạy ngầm khi mở máy**.
+
+## Trello (từ bản 2.2)
+- Mỗi hồ sơ có tab **📋 Trello** với phiên đăng nhập riêng. Hồ sơ Công ty dùng Trello công ty, hồ sơ Khách A dùng Trello khách, không lẫn sang nhau.
+- Lần đầu mở tab thì đăng nhập Trello. Chọn "Continue with Google" cũng được, cửa sổ đăng nhập vẫn dùng chung phiên của hồ sơ đó.
+- **Sửa hồ sơ → ô Trello:** dán link bảng hay workspace (ví dụ https://trello.com/w/tencongty) để mỗi lần bấm ⌂ là về đúng bảng đó.
+- Bấm link Trello trong Slack thì link mở thẳng trong tab Trello của hồ sơ đó.
 
 ## Dịch nhanh (từ bản 2.1)
 - Bôi đen chữ trong Slack (hoặc Drive/Gmail) → **chuột phải → Dịch sang tiếng Anh / tiếng Việt**, hoặc bấm **Ctrl+Shift+E** (Mac: **Cmd+Shift+E**).

@@ -29,6 +29,8 @@ module.exports = async function selftest(ctx) {
     const p2 = await call('prof:save', { name: 'Khách A', slackUrl: 'https://app.slack.com/client', color: '#e91e63' });
     let bad = false; try { await call('prof:save', { name: 'x', slackUrl: 'https://evil.com' }); } catch (e) { bad = /Slack/.test(e.message); }
     chk('reject non-slack url', bad);
+    bad = false; try { await call('prof:save', { name: 'x', trelloUrl: 'https://evil.com/b/1' }); } catch (e) { bad = /Trello/.test(e.message); }
+    chk('reject non-trello url', bad);
     await ui('refresh()'); await wait(400);
     await ui(`selectProfile(${JSON.stringify(p1.id)})`);
     await wait(8000);
@@ -66,6 +68,20 @@ module.exports = async function selftest(ctx) {
     await v2.webContents.executeJavaScript("window.open('https://docs.google.com/document/d/test123/edit'); 1");
     await wait(2500);
     chk('google link routed into profile google tab', /docs\.google\.com|accounts\.google\.com/.test(g.webContents.getURL()) && ctx.current().tab === 'google', g.webContents.getURL());
+
+    // trello tab + routing from slack
+    await ui("selectTab('trello')"); await wait(6000);
+    const tv = ctx.views[p2.id] && ctx.views[p2.id].trello;
+    chk('trello view loaded', tv && /trello\.com|atlassian/.test(tv.webContents.getURL()), tv && tv.webContents.getURL());
+    await shot('09_trello');
+    await ui("selectTab('slack')"); await wait(800);
+    await v2.webContents.executeJavaScript("window.open('https://trello.com/b/abc123/test-board'); 1");
+    await wait(3000);
+    chk('trello link routed into profile trello tab', ctx.current().tab === 'trello' && /trello\.com|atlassian/.test(tv.webContents.getURL()), tv.webContents.getURL() + ' tab=' + ctx.current().tab);
+    const pop = ctx.routeLink(ctx.store.cfg.profiles.find((x) => x.id === p2.id), 'https://accounts.google.com/o/oauth2/auth?x=1', 'trello');
+    chk('google sign-in from trello stays a same-session popup', pop.action === 'allow' && pop.overrideBrowserWindowOptions.webPreferences.partition === 'persist:p-' + p2.id);
+    const p2b = await call('prof:save', { id: p2.id, name: 'Khách A', slackUrl: 'https://app.slack.com/client', trelloUrl: 'trello.com/w/khach-a', color: '#e91e63' });
+    chk('trello url saved + normalized', p2b.trelloUrl === 'https://trello.com/w/khach-a', p2b.trelloUrl);
 
     // translation: select Vietnamese text in an editable box of the visible Slack view, Ctrl+Shift+E, replace
     await ui(`selectProfile(${JSON.stringify(p2.id)})`); await ui("selectTab('slack')"); await wait(1500);

@@ -82,13 +82,13 @@ function layout() {
   const cv = win.contentView;
   // detach every web view, then attach only the visible one
   for (const pid of Object.keys(views)) {
-    for (const k of ['slack', 'google']) {
+    for (const k of WEB_KINDS) {
       const v = views[pid][k];
       if (v && cv.children.includes(v)) cv.removeChildView(v);
     }
   }
   const p = profile(current.profileId);
-  if (!p || current.overlay || !['slack', 'google'].includes(current.tab)) return;
+  if (!p || current.overlay || !WEB_KINDS.includes(current.tab)) return;
   const v = ensureView(p, current.tab);
   cv.addChildView(v);
   v.setBounds(contentBounds());
@@ -98,8 +98,14 @@ function layout() {
 function profile(id) { return store.cfg.profiles.find((p) => p.id === id); }
 function partitionOf(p) { return `persist:p-${p.id}`; }
 
+const WEB_KINDS = ['slack', 'google', 'trello'];
+const TRELLO_RE = /^https:\/\/([a-z0-9-]+\.)*(trello\.com|trellocdn\.com)\//i;
+const LOGIN_RE = /^https:\/\/(accounts\.google\.com|id\.atlassian\.com|appleid\.apple\.com|login\.microsoftonline\.com)\//i;
 const GOOGLE_RE = /^https:\/\/([a-z0-9-]+\.)*(google\.com|googleusercontent\.com|gstatic\.com)\//i;
 const SLACK_RE = /^https:\/\/([a-z0-9-]+\.)*(slack\.com|slack-edge\.com|slack-files\.com|slack-redir\.net)\//i;
+
+function trelloHome(p) { return p.trelloUrl || 'https://trello.com/'; }
+function homeOf(p, kind) { return kind === 'slack' ? (p.slackUrl || 'https://app.slack.com/client') : kind === 'trello' ? trelloHome(p) : googleHome(p); }
 
 function googleHome(p) {
   return p.gmail ? `https://drive.google.com/drive/my-drive?authuser=${encodeURIComponent(p.gmail)}` : 'https://drive.google.com/drive/my-drive';
@@ -156,12 +162,31 @@ function ensureView(p, kind) {
         .then((r) => { if (r && r.s && r.s.trim()) doTranslate(p, wc, r.s, 'en', r.ed); }).catch(() => {});
     }
   });
-  wc.loadURL(kind === 'slack' ? (p.slackUrl || 'https://app.slack.com/client') : googleHome(p));
+  wc.loadURL(homeOf(p, kind));
   views[p.id][kind] = v;
   return v;
 }
 
+function popupInProfile(p) {
+  return { action: 'allow', overrideBrowserWindowOptions: { autoHideMenuBar: true, icon: iconPath('icon.png'), webPreferences: { partition: partitionOf(p), sandbox: true, contextIsolation: true } } };
+}
+
+function openInTab(p, kind, url) {
+  const v = ensureView(p, kind);
+  v.webContents.loadURL(url);
+  current = { ...current, profileId: p.id, tab: kind, overlay: false };
+  sendUI('ui:select', p.id); sendUI('ui:tab', kind);
+  layout();
+  return { action: 'deny' };
+}
+
 function routeLink(p, url, fromKind) {
+  // sign-in popups ("Continue with Google" on Trello...) must stay a popup of the same session
+  if (fromKind !== 'google' && LOGIN_RE.test(url)) return popupInProfile(p);
+  if (TRELLO_RE.test(url)) {
+    if (fromKind === 'trello') return popupInProfile(p);
+    return openInTab(p, 'trello', url);
+  }
   if (GOOGLE_RE.test(url)) {
     const g = ensureView(p, 'google');
     g.webContents.loadURL(withAuthUser(url, p));
@@ -172,7 +197,7 @@ function routeLink(p, url, fromKind) {
   }
   if (SLACK_RE.test(url)) {
     // huddles, file previews... open in a window that shares this profile's session
-    return { action: 'allow', overrideBrowserWindowOptions: { autoHideMenuBar: true, icon: iconPath('icon.png'), webPreferences: { partition: partitionOf(p), sandbox: true, contextIsolation: true } } };
+    return popupInProfile(p);
   }
   if (/^https?:\/\//i.test(url)) shell.openExternal(url);
   return { action: 'deny' };
@@ -216,7 +241,7 @@ function doTranslate(p, wc, text, to, editable) {
 function destroyViews(pid) {
   const vs = views[pid];
   if (!vs) return;
-  for (const k of ['slack', 'google']) {
+  for (const k of WEB_KINDS) {
     const v = vs[k];
     if (v) { if (win && win.contentView.children.includes(v)) win.contentView.removeChildView(v); v.webContents.close(); }
   }
@@ -298,7 +323,16 @@ function createTray() {
 }
 
 // ------------------------------------------------------------------ IPC: app + profiles
-const PROFILE_FIELDS = ['name', 'color', 'slackUrl', 'gmail', 'notify'];
+const PROFILE_FIELDS = ['name', 'color', 'slackUrl', 'gmail', 'trelloUrl', 'notify'];
+
+function cleanTrelloUrl(u) {
+  u = (u || '').trim();
+  if (!u) return '';
+  if (!/^https?:\/\//.test(u)) u = 'https://' + u;
+  u = u.replace(/^http:/, 'https:');
+  if (!TRELLO_RE.test(u.endsWith('/') ? u : u + '/')) throw new Error('Địa chỉ Trello phải dạng https://trello.com/... (bảng hoặc workspace)');
+  return u;
+}
 
 function cleanSlackUrl(u) {
   u = (u || '').trim();
@@ -335,7 +369,7 @@ const handlers = {
     const v = ensureView(p, a.kind); const wc = v.webContents;
     if (a.action === 'back' && wc.navigationHistory.canGoBack()) wc.navigationHistory.goBack();
     else if (a.action === 'reload') wc.reload();
-    else if (a.action === 'home') wc.loadURL(a.kind === 'slack' ? (p.slackUrl || 'https://app.slack.com/client') : googleHome(p));
+    else if (a.action === 'home') wc.loadURL(homeOf(p, a.kind));
     else if (a.action === 'external') shell.openExternal(wc.getURL());
     return true;
   },
@@ -345,12 +379,14 @@ const handlers = {
     if (!name) throw new Error('Đặt tên cho hồ sơ (ví dụ: Công ty, Khách A).');
     const gmail = String(d.gmail || '').trim();
     if (gmail && !/^[^@\s]+@[^@\s]+\.[a-z]{2,}$/i.test(gmail)) throw new Error('Gmail không hợp lệ.');
-    const vals = { name, color: d.color || '#7c4dff', slackUrl: cleanSlackUrl(d.slackUrl), gmail, notify: d.notify !== false };
+    const vals = { name, color: d.color || '#7c4dff', slackUrl: cleanSlackUrl(d.slackUrl), gmail, trelloUrl: cleanTrelloUrl(d.trelloUrl), notify: d.notify !== false };
     let p = d.id && profile(d.id);
     if (p) {
       const slackChanged = p.slackUrl !== vals.slackUrl;
+      const trelloChanged = (p.trelloUrl || '') !== vals.trelloUrl;
       PROFILE_FIELDS.forEach((k) => { p[k] = vals[k]; });
       if (slackChanged && views[p.id] && views[p.id].slack) views[p.id].slack.webContents.loadURL(p.slackUrl || 'https://app.slack.com/client');
+      if (trelloChanged && views[p.id] && views[p.id].trello) views[p.id].trello.webContents.loadURL(trelloHome(p));
     } else {
       p = { id: Store.id(), ...vals, createdAt: Date.now() };
       store.cfg.profiles.push(p);
@@ -561,7 +597,7 @@ app.whenReady().then(() => {
   createWindow();
   if (!process.env.METATOOLS_NO_TRAY) createTray();
   refreshBadge();
-  if (process.env.METATOOLS_SELFTEST) require('./test/selftest')({ win, handlers, store, views, events, layout, ensureView, current: () => current });
+  if (process.env.METATOOLS_SELFTEST) require('./test/selftest')({ win, handlers, store, views, events, layout, ensureView, routeLink, current: () => current });
   // start every Slack in the background so notifications arrive without opening each one
   setTimeout(() => {
     for (const p of store.cfg.profiles) if (p.notify !== false) ensureView(p, 'slack');
