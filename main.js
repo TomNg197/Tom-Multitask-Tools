@@ -460,6 +460,21 @@ const handlers = {
   'upd:download': () => downloadUpdate(),
   'upd:restart': () => restartToUpdate(),
   'upd:setAuto': (a) => { store.cfg.settings.autoUpdate = !!a.on; store.save(); return !!a.on; },
+  'upd:setToken': (a) => {
+    const t = String(a.token || '').trim();
+    if (!/^[A-Za-z0-9_]{20,255}$/.test(t)) throw new Error('Token không đúng dạng (github_pat_… hoặc ghp_…).');
+    store.setToken(UPD_SECRET, t);
+    store.cfg.settings.updateTokenAcc = null; store.save();
+    updSet({ state: 'idle', error: '', check: null });
+    return updPublic();
+  },
+  'upd:clearToken': () => { store.setToken(UPD_SECRET, null); updSet({ state: 'idle', error: '', check: null }); return updPublic(); },
+  'upd:useAcc': (a) => {
+    if (a.id && !updAccs().some((x) => x.id === a.id)) throw new Error('Nick này không có PAT github.com.');
+    store.cfg.settings.updateTokenAcc = a.id || null; store.save();
+    updSet({ state: 'idle', error: '', check: null });
+    return updPublic();
+  },
   'upd:openFull': () => { const u = upd.check && (upd.check.fullUrl || null); if (u) shell.openExternal(u); return !!u; },
 
   // ---------------------------------------------------------------- git
@@ -604,12 +619,30 @@ function startGitTask(pairId, kind) {
 // state: idle | checking | latest | available | needFull | bad | downloading | ready | error
 const upd = { state: 'idle', check: null, error: '', got: 0, total: 0, notice: null };
 
+// OPTIONAL GitHub token, only for the private-repo fallback (the default channel is public): the owner's own read-only
+// PAT (secrets.json via safeStorage, same as Git nicks) or the PAT of a github.com Git nick already in the app.
+// Never logged, never sent to the UI, only to api.github.com.
+const UPD_SECRET = '__update';
+function updAccs() { return store.cfg.gitAccounts.filter((a) => a.auth === 'pat' && a.host === 'github.com' && store.hasToken(a.id)); }
+function updTokenSource() {
+  const acc = store.cfg.settings.updateTokenAcc && updAccs().find((a) => a.id === store.cfg.settings.updateTokenAcc);
+  if (acc) return { kind: 'acc', acc };
+  return store.hasToken(UPD_SECRET) ? { kind: 'own' } : { kind: 'none' };
+}
+function updToken() {
+  const src = updTokenSource();
+  return src.kind === 'acc' ? store.getToken(src.acc.id) : src.kind === 'own' ? store.getToken(UPD_SECRET) : null;
+}
+
 function updPublic() {
   const c = upd.check;
+  const src = updTokenSource();
   return {
     state: upd.state, error: upd.error, got: upd.got, total: upd.total, notice: upd.notice,
     version: BOOT.version, shellVersion: BOOT.shellVersion, fromPayload: !!BOOT.payload,
-    checkedAt: store.cfg.settings.updateCheckedAt || 0, url: U.manifestUrl(),
+    checkedAt: store.cfg.settings.updateCheckedAt || 0, url: U.channel(),
+    token: { source: src.kind, acc: src.acc ? src.acc.id : null, hasOwn: store.hasToken(UPD_SECRET) },
+    accs: updAccs().map((a) => ({ id: a.id, label: a.label, user: a.user })),
     latest: c ? { version: c.manifest.version, date: c.manifest.date, notes: c.manifest.notes, reason: c.reason || '', fullUrl: c.fullUrl } : null,
   };
 }
@@ -618,12 +651,13 @@ function updSet(patch) { Object.assign(upd, patch); sendUI('ui:update', updPubli
 
 async function checkUpdate(auto) {
   if (['checking', 'downloading', 'ready'].includes(upd.state)) return updPublic();
+  const token = updToken();   // null is fine: public channel
   updSet({ state: 'checking', error: '' });
   try {
     const r = await U.check({
       currentVersion: BOOT.version, shellVersion: BOOT.shellVersion, electronMajor: parseInt(process.versions.electron, 10),
       platform: process.platform, arch: process.arch, bad: BOOT.boot ? BOOT.boot.readState(app.getPath('userData')).bad : [],
-    });
+    }, { token });
     store.cfg.settings.updateCheckedAt = Date.now(); store.save();
     updSet({ state: r.status, check: r });
     if (auto && r.status === 'available') notify(`MetaTools ${r.manifest.version} đã có`, 'Bấm để xem thay đổi và cập nhật ngay trong app.', openUpdatePanel);
@@ -639,6 +673,7 @@ async function downloadUpdate() {
   let last = 0;
   try {
     await U.download(upd.check.manifest, app.getPath('userData'), {
+      token: upd.check.manifest.payload.github ? updToken() : null,
       onProgress: ({ got, total }) => { upd.got = got; upd.total = total; if (Date.now() - last > 200) { last = Date.now(); sendUI('ui:update', updPublic()); } },
     });
     updSet({ state: 'ready' });

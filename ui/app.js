@@ -164,6 +164,7 @@ function renderUpdate() {
     ${(u.state === 'needFull' || u.state === 'bad') && L && L.fullUrl ? '<button class="pri" id="u_full">Tải bản đầy đủ</button>' : ''}
     ${['checking', 'downloading', 'ready'].includes(u.state) ? '' : '<button id="u_check">Kiểm tra cập nhật</button>'}
   </div>
+  <details style="margin-top:10px" ${u.token.source !== 'none' ? 'open' : ''}><summary class="mute small" style="cursor:pointer">GitHub token (không bắt buộc, chỉ cần khi repo app để private)</summary>${tokenBox(u)}</details>
   <label style="display:flex;gap:8px;align-items:center;color:var(--ink);margin-top:12px"><input type="checkbox" id="u_auto" style="width:auto" ${S.settings.autoUpdate ? 'checked' : ''}> Tự kiểm tra bản mới (tối đa 6 giờ một lần)</label>
   <div class="mute small" style="margin-top:6px">Bản cập nhật được kiểm tra mã sha256 trước khi cài; nếu bản mới không chạy được, app tự quay về bản trước. Kênh: <span class="mono">${esc(u.url)}</span></div>`;
   const on = (id, fn) => { const el = $(id); if (el) el.onclick = fn; };
@@ -171,7 +172,21 @@ function renderUpdate() {
   on('u_dl', () => call('upd:download').catch(() => {}));
   on('u_restart', () => call('upd:restart').catch(() => {}));
   on('u_full', () => call('upd:openFull').catch(() => {}));
+  on('u_tsave', async () => { const t = $('u_token').value; $('u_token').value = ''; if (await call('upd:setToken', { token: t }).catch(() => null)) toast('Đã lưu token (mã hoá trong máy)'); });
+  on('u_tdel', () => call('upd:clearToken').catch(() => {}));
+  if ($('u_tsrc')) $('u_tsrc').onchange = (e) => call('upd:useAcc', { id: e.target.value === 'own' ? null : e.target.value }).catch(() => {});
   $('u_auto').onchange = async (e) => { await call('upd:setAuto', { on: e.target.checked }); S.settings.autoUpdate = e.target.checked; };
+}
+
+// optional token for a private repo: own PAT (masked, never shown back) or the PAT of a github.com Git nick
+function tokenBox(u) {
+  const t = u.token; const usingAcc = t.source === 'acc';
+  const opts = [`<option value="own" ${usingAcc ? '' : 'selected'}>Token riêng ${t.hasOwn ? '(đã lưu ••••••••)' : '(chưa có)'}</option>`]
+    .concat(u.accs.map((a) => `<option value="${esc(a.id)}" ${t.acc === a.id ? 'selected' : ''}>Dùng token của nick ${esc(a.label)} (${esc(a.user)})</option>`));
+  return `<label>GitHub token để cập nhật <span class="mute small">(fine-grained PAT, chỉ đọc Contents của repo app)</span></label>
+  <div class="mute small" style="margin-bottom:6px">Repo công khai thì để trống. Chỉ khi kênh cập nhật báo 404/401 app mới dùng token, gửi riêng tới api.github.com, cất mã hoá trong Keychain/DPAPI.</div>
+  ${u.accs.length ? `<select id="u_tsrc" style="margin-bottom:6px">${opts.join('')}</select>` : ''}
+  ${usingAcc ? '' : `<div class="row"><input id="u_token" type="password" autocomplete="off" placeholder="${t.hasOwn ? 'đã lưu, dán token mới để thay' : 'github_pat_…'}" style="flex:1;width:auto"><button id="u_tsave">Lưu token</button>${t.hasOwn ? '<button class="err" id="u_tdel">Xoá</button>' : ''}</div>`}`;
 }
 
 function updDot() { $('updDot').classList.toggle('hidden', !(S && S.update && ['available', 'ready', 'needFull'].includes(S.update.state))); }

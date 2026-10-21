@@ -5,6 +5,7 @@ const fs = require('fs'); const os = require('os'); const path = require('path')
 const asar = require('@electron/asar');
 const boot = require('../lib/boot');
 const U = require('../lib/updater');
+const FAKE = require('./fake-update-server');
 
 let ok = 0, tot = 0;
 const chk = (n, c, x = '') => { tot++; if (c) ok++; console.log(c ? 'PASS' : 'FAIL', n, x); };
@@ -165,7 +166,54 @@ async function makePayload(version, name = 'metatools', withMain = true) {
   process.env.METATOOLS_UPDATE_URL = H + '/m.json';
   chk('manifest URL env override', U.manifestUrl() === H + '/m.json');
   delete process.env.METATOOLS_UPDATE_URL;
-  chk('default manifest URL is public https, no token', /^https:\/\//.test(U.manifestUrl()) && !/token|access_token|@/.test(U.manifestUrl()));
+  chk('default = public release asset of the app repo, no token', U.manifestUrl() === 'https://github.com/TomNg197/Tom-Multitask-Tools/releases/latest/download/metatools-update.json');
+
+  // ---- optional private-repo fallback against a fake GitHub API (public manifest 404 -> API with token, 302 -> other host)
+  const TOKEN = 'github_pat_TESTONLY_0123456789abcdef';
+  const F = await FAKE.start({ payload: P231, version: '2.3.1', token: TOKEN });
+  process.env.METATOOLS_GH_API = F.api;
+  const PRIV = F.api + '/private/metatools-update.json';   // answers 404 like a private repo's public download URL
+  const go = { url: PRIV, token: TOKEN, fetch: globalThis.fetch };
+  c = await U.check(env, go);
+  chk('gh: latest release found, available', c.status === 'available' && c.manifest.version === '2.3.1' && c.manifest.payload.github, c.status);
+  chk('gh: payload url = asset API url', c.manifest.payload.url === `${F.api}/repos/${FAKE.REPO}/releases/assets/2`, c.manifest.payload.url);
+  chk('gh: full link = release page', c.fullUrl === `https://github.com/${FAKE.REPO}/releases/tag/v2.3.1`, c.fullUrl);
+  const UDG = path.join(D, 'userDataG');
+  await U.download(c.manifest, UDG, go);
+  chk('gh: payload downloaded through 302 + staged', boot.readState(UDG).pending && boot.readState(UDG).pending.version === '2.3.1' && sha(fs.readFileSync(path.join(boot.dirs(UDG).payloads, '2.3.1.asar'))) === sha(P231));
+  chk('gh: redirect host reached (manifest + payload)', F.seen.filter((e) => e.host === 'cdn').length >= 2);
+  chk('gh: Authorization NEVER sent to the redirect host', F.seen.filter((e) => e.host === 'cdn').every((e) => !e.auth), JSON.stringify(F.seen.filter((e) => e.host === 'cdn')));
+  chk('gh: Authorization sent to the API host', F.seen.filter((e) => e.host === 'api' && e.path.startsWith('/repos/')).every((e) => e.auth));
+  F.seen.length = 0;
+  const br = await U.ghGet(`${F.cdn.replace('localhost', '127.0.0.1')}/x`, TOKEN, 'x').then(() => false, (e) => /Chặn/.test(e.message));
+  chk('gh: refuses to send the token to a non-API host', br && F.seen.length === 0);
+  const bounce = await U.ghGet(`${F.api}/repos/${FAKE.REPO}/releases/assets/9`, TOKEN, 'x').catch((e) => e);
+  chk('gh: 404 asset -> token message', bounce instanceof Error && new RegExp(U.BAD_TOKEN).test(bounce.message), bounce && bounce.message);
+  const resB = await U.ghGet(`${F.api}/repos/${FAKE.REPO}/releases/latest`, TOKEN, 'application/vnd.github+json');
+  chk('gh: release JSON readable with token', resB.ok);
+  F.seen.length = 0;
+  // simulate a hop api -> cdn/bounce -> api: last hop must be unauthenticated (fake returns 404 without token)
+  const fakeFetch = (u, o2) => (u.endsWith('/releases/assets/7')
+    ? Promise.resolve(new Response(null, { status: 302, headers: { Location: `${F.cdn}/bounce` } })) : globalThis.fetch(u, o2));
+  const rb = await U.ghGet(`${F.api}/repos/${FAKE.REPO}/releases/assets/7`, TOKEN, 'application/octet-stream', { fetch: fakeFetch });
+  chk('gh: after leaving the API host the token is not re-sent', F.seen.length >= 2 && F.seen.every((e) => !e.auth) && rb.status === 404, JSON.stringify(F.seen));
+  chk('gh: 404 without token -> hint to add a token', await rejects(U.check(env, { url: PRIV, fetch: globalThis.fetch }), /404.*token/));
+  chk('gh: wrong token -> "Token không đọc được repo"', await rejects(U.check(env, { url: PRIV, token: 'github_pat_WRONG_000000000000', fetch: globalThis.fetch }), new RegExp(U.BAD_TOKEN)));
+  F.seen.length = 0;
+  const pub = await U.check(env, { url: F.manifestUrl, token: TOKEN, fetch: globalThis.fetch });
+  chk('public manifest works and the token is not used for it', pub.status === 'available' && !pub.manifest.payload.github && F.seen.every((e) => !e.auth), JSON.stringify(F.seen));
+  const F2 = await FAKE.start({ payload: P231, version: '2.3.1', token: TOKEN, noManifestAsset: true });
+  process.env.METATOOLS_GH_API = F2.api;
+  chk('gh: release without manifest asset -> clear error', await rejects(U.check(env, { ...go, url: F2.api + '/private/m.json' }), /chưa có metatools-update\.json/));
+  const F3 = await FAKE.start({ payload: P231, version: '2.3.1', token: TOKEN, sha256: 'b'.repeat(64) });
+  process.env.METATOOLS_GH_API = F3.api;
+  const c3 = await U.check(env, { ...go, url: F3.api + '/private/m.json' });
+  const UDG3 = path.join(D, 'userDataG3');
+  chk('gh: sha256 mismatch still refused', await rejects(U.download(c3.manifest, UDG3, go), /sha256/) && !boot.readState(UDG3).pending);
+  const seenAll = [...F.seen, ...F2.seen, ...F3.seen];
+  chk('gh: token never in any request path', seenAll.every((e) => !e.path.includes(TOKEN)));
+  [F, F2, F3].forEach((x) => x.close());
+  delete process.env.METATOOLS_GH_API;
 
   srv.close();
   fs.rmSync(D, { recursive: true, force: true });

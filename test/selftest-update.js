@@ -26,7 +26,7 @@ module.exports = async function selftestUpdate(ctx) {
       const c = await call('upd:check');
       chk('check finds 2.3.1', c.state === 'available' && c.latest.version === '2.3.1', c.state + ' ' + c.error);
       await ui("panel='settings'; refresh()"); await wait(600);
-      chk('settings shows new version + notes', /2\.3\.1/.test(await ui("document.getElementById('updCard').textContent")) && /Bản thử e2e/.test(await ui("document.getElementById('updCard').textContent")));
+      chk('settings shows new version + notes', /2\.3\.1/.test(await ui("document.getElementById('updCard').textContent")) && /Bản thử 2\.3\.1/.test(await ui("document.getElementById('updCard').textContent")));
       chk('update dot on settings button', await ui("!document.getElementById('updDot').classList.contains('hidden')"));
       await shot('A1_available');
       await ui("document.getElementById('u_dl').click()");
@@ -47,6 +47,40 @@ module.exports = async function selftestUpdate(ctx) {
       chk('confirmed good after start', !ctx.BOOT.trial && bs.good && bs.tries === 0, JSON.stringify(bs));
       await ui("panel='settings'; refresh()"); await wait(600);
       await shot('B1_updated');
+    } else if (step === 'G') {   // repo private again: public manifest URL answers 404 -> optional token fallback
+      const T = process.env.METATOOLS_E2E_TOKEN;
+      const card = () => ui("document.getElementById('updCard').innerHTML");
+      chk('channel = the (private-looking) manifest URL', /\/private\/metatools-update\.json$/.test(st.update.url), st.update.url);
+      await ui("panel='settings'; refresh()"); await wait(500);
+      let c = await call('upd:check');
+      chk('404 without token -> message suggests a token', c.state === 'error' && /404/.test(c.error) && /token/.test(c.error), c.error);
+      await wait(300);
+      chk('optional token box present (collapsed)', /GitHub token để cập nhật/.test(await card()) && /không bắt buộc/.test(await card()) && !(await ui("document.querySelector('#updCard details').open")));
+      await shot('G1_no_token');
+      await call('upd:setToken', { token: 'github_pat_WRONG_0000000000000000' });
+      c = await call('upd:check');
+      chk('wrong token -> "Token không đọc được repo"', c.state === 'error' && /Token không đọc được repo/.test(c.error), c.error);
+      let bad = false; try { await call('upd:setToken', { token: 'abc' }); } catch (e) { bad = /không đúng dạng/.test(e.message); }
+      chk('malformed token rejected', bad);
+      // paste the real token through the UI, like the owner would
+      await ui(`document.getElementById('u_token').value = ${JSON.stringify(T)}; document.getElementById('u_tsave').click()`); await wait(800);
+      const s2 = await call('upd:state');
+      chk('token saved (own)', s2.token.source === 'own' && s2.token.hasOwn);
+      chk('token never shown back in the UI', !(await card()).includes(T) && (await ui("document.getElementById('u_token').value")) === '' && !JSON.stringify(s2).includes(T));
+      c = await call('upd:check');
+      chk('check via private release works', c.state === 'available' && c.latest.version === '2.3.1' && /releases\/tag\/v2\.3\.1/.test(c.latest.fullUrl), c.state + ' ' + c.error);
+      // bonus: use the PAT of a github.com Git nick instead
+      await call('upd:clearToken');
+      const acc = await call('git:saveAccount', { label: 'Github sếp', host: 'github.com', user: 'TomNg197', email: 'tom@example.com', auth: 'pat', token: T });
+      await ui('refresh()'); await wait(400);
+      chk('nick offered as token source', /Dùng token của nick Github sếp/.test(await card()));
+      await call('upd:useAcc', { id: acc.id });
+      c = await call('upd:check');
+      chk('check with the nick token works', c.state === 'available' && (await call('upd:state')).token.source === 'acc', c.state + ' ' + c.error);
+      await call('upd:download');
+      chk('download via asset API (302) -> ready', (await call('upd:state')).state === 'ready');
+      await ui('refresh()'); await wait(500);
+      await shot('G2_github_ready');
     } else if (step === 'D') {
       chk('rolled back to 2.3.1 after broken 2.3.2', st.version === '2.3.1' && ctx.BOOT.payload, st.version);
       chk('rollback notice', st.update.notice && st.update.notice.from === '2.3.2' && st.update.notice.to === '2.3.1', JSON.stringify(st.update.notice));

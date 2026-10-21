@@ -66,7 +66,8 @@ Phần Git cần có **Git** trên máy:
 - App tự kiểm tra bản mới (tối đa 6 giờ một lần) và báo bằng chấm ↑ trên nút ⚙️. Muốn kiểm tra ngay: **Cài đặt → Kiểm tra cập nhật**, hoặc chuột phải biểu tượng ở khay → **Kiểm tra cập nhật…**
 - Bấm **Tải bản cập nhật**, chờ thanh tiến trình chạy hết, rồi bấm **Khởi động lại để cập nhật**. Không cần tải file zip và cài lại.
 - App kiểm tra mã sha256 của bản tải về. Sai mã thì app không cài. Nếu bản mới không chạy được, lần mở sau app tự quay về bản trước và báo cho anh biết.
-- Một số bản đổi phần lõi (Electron). Với các bản đó app sẽ ghi **cần tải bản đầy đủ** và có nút mở trang tải file zip.
+- Một số bản đổi phần lõi (Electron). Với các bản đó app sẽ ghi **cần tải bản đầy đủ** và có nút mở link tải file zip.
+- Không cần token. Ô **GitHub token** trong mục Cập nhật chỉ dùng khi repo app bị để private, lúc đó app báo lỗi 404 và gợi ý dán token (fine-grained, Contents: Read-only).
 - Bản 2.2 trở về trước chưa có tính năng này, nên phải cài tay bản 2.3 một lần.
 
 ## Chuyển máy (Mac ⇄ Windows)

@@ -8,10 +8,9 @@ on:
 permissions:
   contents: write
 
-# In-app update channel (see TIEN_DO.md "Cập nhật trong app"). Optional repo settings:
-#   vars.UPDATE_REPO         public releases-only repo, e.g. TomNg197/MetaTools-releases (the app reads its latest release)
-#   secrets.UPDATE_REPO_TOKEN  fine-grained PAT with Contents: read/write on UPDATE_REPO only (stays in CI, never in the app)
-#   vars.UPDATE_BASE_URL     instead of UPDATE_REPO: public folder URL where you upload the files yourself
+# In-app update (see TIEN_DO.md "Cập nhật trong app"): the app reads releases/latest/download/metatools-update.json of
+# THIS (public) repo. The payload job below attaches the payload + manifest to the same release as the zips.
+# Optional: vars.UPDATE_BASE_URL = another public folder for the payload links in the manifest.
 env:
   PKG_IGNORE: --ignore=^/test --ignore=^/dist --ignore=^/scripts --ignore=^/\.github --ignore=TIEN_DO.md --ignore=preview_.*
 
@@ -88,16 +87,14 @@ jobs:
       - name: Payload + manifest
         shell: bash
         env:
-          UPDATE_REPO: ${{ vars.UPDATE_REPO }}
           UPDATE_BASE_URL: ${{ vars.UPDATE_BASE_URL }}
         run: |
           VERSION=$(node -p "require('./package.json').version")
           npx @electron/packager . MetaTools --platform=linux --arch=x64 --out=dist --asar --overwrite --prune=true $PKG_IGNORE --app-version=$VERSION
           cp dist/MetaTools-linux-x64/resources/app.asar "MetaTools-payload-$VERSION.asar"
           TAG="${GITHUB_REF_NAME}"
-          if [ -n "$UPDATE_BASE_URL" ]; then BASE="$UPDATE_BASE_URL"
-          elif [ -n "$UPDATE_REPO" ]; then BASE="https://github.com/$UPDATE_REPO/releases/download/$TAG/"
-          else BASE="https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG/"; fi
+          # payload link = this tag's release asset (the token fallback for a private repo matches it by file name)
+          if [ -n "$UPDATE_BASE_URL" ]; then BASE="$UPDATE_BASE_URL"; else BASE="https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG/"; fi
           node scripts/make-update-manifest.js --payload "MetaTools-payload-$VERSION.asar" --base-url "$BASE" --out metatools-update.json
       - uses: actions/upload-artifact@v4
         with:
@@ -115,24 +112,3 @@ jobs:
           name: MetaTools ${{ github.ref_name }}
           body_path: RELEASE_NOTES.md
 
-  # copy everything to the PUBLIC releases-only repo, which is what the app checks (skipped until UPDATE_REPO is set)
-  publish-update:
-    needs: [build, payload]
-    if: startsWith(github.ref, 'refs/tags/') && vars.UPDATE_REPO != ''
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
-        with:
-          path: rel
-          merge-multiple: true
-      - run: ls -la rel
-      - uses: softprops/action-gh-release@v2
-        with:
-          repository: ${{ vars.UPDATE_REPO }}
-          token: ${{ secrets.UPDATE_REPO_TOKEN }}
-          tag_name: ${{ github.ref_name }}
-          name: MetaTools ${{ github.ref_name }}
-          body_path: RELEASE_NOTES.md
-          make_latest: true
-          files: rel/*
