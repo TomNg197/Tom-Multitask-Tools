@@ -62,6 +62,13 @@ Phần Git cần có **Git** trên máy:
    - Không mang lịch sử, tên hay email cá nhân sang.
    - Không bao giờ force push: nếu repo đích vừa có người đẩy thêm, app từ chối và bảo bấm lại.
 
+## Cập nhật trong app (từ bản 2.3)
+- App tự kiểm tra bản mới (tối đa 6 giờ một lần) và báo bằng chấm ↑ trên nút ⚙️. Muốn kiểm tra ngay: **Cài đặt → Kiểm tra cập nhật**, hoặc chuột phải biểu tượng ở khay → **Kiểm tra cập nhật…**
+- Bấm **Tải bản cập nhật**, chờ thanh tiến trình chạy hết, rồi bấm **Khởi động lại để cập nhật**. Không cần tải file zip và cài lại.
+- App kiểm tra mã sha256 của bản tải về. Sai mã thì app không cài. Nếu bản mới không chạy được, lần mở sau app tự quay về bản trước và báo cho anh biết.
+- Một số bản đổi phần lõi (Electron). Với các bản đó app sẽ ghi **cần tải bản đầy đủ** và có nút mở trang tải file zip.
+- Bản 2.2 trở về trước chưa có tính năng này, nên phải cài tay bản 2.3 một lần.
+
 ## Chuyển máy (Mac ⇄ Windows)
 Vào **Cài đặt → Xuất danh sách hồ sơ**, sang máy kia bấm **Nhập**. File chỉ chứa tên, workspace, Gmail, nick và cặp Git; **không có** token, SSH key hay phiên đăng nhập. Mỗi máy phải đăng nhập Slack/Google và nhập token (hoặc tạo key) lại một lần.
 

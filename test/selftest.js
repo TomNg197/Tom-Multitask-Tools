@@ -132,6 +132,7 @@ module.exports = async function selftest(ctx) {
     // feed + settings panels
     await ui("panel='feed'; render()"); await wait(500); await shot('07_feed');
     await ui("panel='settings'; render()"); await wait(400); await shot('08_settings');
+    chk('settings has update section + check button', await ui("!!document.getElementById('updCard') && !!document.getElementById('u_check') && /Cập nhật/.test(document.getElementById('updCard').textContent)"));
     const exp = ctx.store.exportData();
     chk('export has no tokens/keys', !JSON.stringify(exp).includes('tok-') && !JSON.stringify(exp).includes('_ed25519'));
     // tray-hide on close

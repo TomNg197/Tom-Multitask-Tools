@@ -59,6 +59,7 @@ function render() {
   if (panel === 'git') renderGit();
   if (panel === 'feed') renderFeed();
   if (panel === 'settings') renderSettings();
+  updDot();
   syncMain();
 }
 
@@ -130,12 +131,50 @@ function renderSettings() {
   <div class="row" style="margin-top:14px"><button id="s_export">Xuất danh sách hồ sơ</button><button id="s_import">Nhập danh sách hồ sơ</button></div>
   <div class="mute small" style="margin-top:6px">Dùng để chuyển sang máy Mac/Windows khác. File chỉ có tên, workspace, Gmail, nick và cặp Git; <b>không có</b> token, SSH key hay phiên đăng nhập (mỗi máy đăng nhập/nhập token lại 1 lần).</div>
   <div class="row" style="margin-top:18px"><button class="err" id="s_quit">Thoát hẳn MetaTools</button><span class="mute small">Đóng cửa sổ thì app vẫn chạy ở khay để nhận tin.</span></div>
-  <div class="mute small" style="margin-top:14px">MetaTools ${esc(S.version)} · ${esc(S.platform)}</div></div>`;
+  <div class="mute small" style="margin-top:14px">MetaTools ${esc(S.version)} · ${esc(S.platform)}</div></div>
+  <div class="card" id="updCard"></div>`;
   $('s_login').onchange = async (e) => { await call('app:setLogin', { on: e.target.checked }); await refresh(); };
   $('s_export').onclick = async () => { const f = await call('app:export'); if (f) toast('Đã lưu ' + f); };
   $('s_import').onclick = async () => { const r = await call('app:import'); if (r) { toast(`Đã nhập: thêm ${r.added}, cập nhật ${r.updated}`); await refresh(); } };
   $('s_quit').onclick = () => call('app:quit');
+  renderUpdate();
 }
+
+// ------------------------------------------------------------------ in-app update
+function fmtMB(n) { return (n / 1048576).toFixed(1) + ' MB'; }
+function renderUpdate() {
+  const box = $('updCard'); const u = S.update; if (!box || !u) return;
+  const L = u.latest;
+  const head = { idle: '', checking: '<span class="badge">đang kiểm tra…</span>', latest: '<span class="badge b-ok">✓ đang là bản mới nhất</span>',
+    available: `<span class="badge b-warn">có bản ${esc(L && L.version)}</span>`, downloading: '<span class="badge">đang tải…</span>',
+    ready: '<span class="badge b-ok">đã tải xong, chờ khởi động lại</span>', needFull: '<span class="badge b-warn">cần tải bản đầy đủ</span>',
+    bad: '<span class="badge b-err">bản mới lỗi trên máy này</span>', error: '<span class="badge b-err">lỗi</span>' }[u.state] || '';
+  const pct = u.total ? Math.min(100, Math.round((u.got / u.total) * 100)) : 0;
+  box.innerHTML = `<h2>Cập nhật ${head}</h2>
+  <div class="mute small">Đang chạy <b>${esc(u.version)}</b>${u.fromPayload ? ` (bản cập nhật trong app, bộ cài gốc ${esc(u.shellVersion)})` : ''}${u.checkedAt ? ` · kiểm tra lúc ${esc(new Date(u.checkedAt).toLocaleString())}` : ''}</div>
+  ${u.notice ? `<div class="warnbox">Bản ${esc(u.notice.from)} ${u.notice.type === 'corrupt' ? 'bị hỏng file' : 'lỗi khi khởi động'} nên app đã tự quay về ${esc(u.notice.to)}.</div>` : ''}
+  ${L && u.state !== 'latest' ? `<div style="margin-top:10px"><b>MetaTools ${esc(L.version)}</b> <span class="mute small">${esc(String(L.date).slice(0, 10))}</span></div>
+    ${L.notes ? `<div class="trSrc" id="u_notes" style="margin-top:6px;max-height:180px">${esc(L.notes)}</div>` : ''}
+    ${L.reason ? `<div class="warnbox">${esc(L.reason)}</div>` : ''}` : ''}
+  ${u.state === 'downloading' ? `<div class="prog" style="margin-top:10px"><div id="u_bar" style="width:${pct}%"></div></div><div class="mute small" id="u_pct">${pct}% · ${fmtMB(u.got)}${u.total ? ' / ' + fmtMB(u.total) : ''}</div>` : ''}
+  ${u.error ? `<div class="warnbox" id="u_err">${esc(u.error)}</div>` : ''}
+  <div class="row" style="margin-top:12px">
+    ${u.state === 'available' ? '<button class="pri" id="u_dl">Tải bản cập nhật</button>' : ''}
+    ${u.state === 'ready' ? '<button class="ok" id="u_restart">Khởi động lại để cập nhật</button>' : ''}
+    ${(u.state === 'needFull' || u.state === 'bad') && L && L.fullUrl ? '<button class="pri" id="u_full">Tải bản đầy đủ</button>' : ''}
+    ${['checking', 'downloading', 'ready'].includes(u.state) ? '' : '<button id="u_check">Kiểm tra cập nhật</button>'}
+  </div>
+  <label style="display:flex;gap:8px;align-items:center;color:var(--ink);margin-top:12px"><input type="checkbox" id="u_auto" style="width:auto" ${S.settings.autoUpdate ? 'checked' : ''}> Tự kiểm tra bản mới (tối đa 6 giờ một lần)</label>
+  <div class="mute small" style="margin-top:6px">Bản cập nhật được kiểm tra mã sha256 trước khi cài; nếu bản mới không chạy được, app tự quay về bản trước. Kênh: <span class="mono">${esc(u.url)}</span></div>`;
+  const on = (id, fn) => { const el = $(id); if (el) el.onclick = fn; };
+  on('u_check', () => call('upd:check').catch(() => {}));
+  on('u_dl', () => call('upd:download').catch(() => {}));
+  on('u_restart', () => call('upd:restart').catch(() => {}));
+  on('u_full', () => call('upd:openFull').catch(() => {}));
+  $('u_auto').onchange = async (e) => { await call('upd:setAuto', { on: e.target.checked }); S.settings.autoUpdate = e.target.checked; };
+}
+
+function updDot() { $('updDot').classList.toggle('hidden', !(S && S.update && ['available', 'ready', 'needFull'].includes(S.update.state))); }
 
 // ------------------------------------------------------------------ git
 function accLabel(id) { const a = GS.accounts.find((x) => x.id === id); return a ? `${esc(a.label)} <span class="mute">(${esc(a.host)} / ${esc(a.user)})</span>` : '<span style="color:var(--err)">nick đã xoá</span>'; }
@@ -304,6 +343,18 @@ mt.on('ui:viewState', (v) => { if (v.profileId === cur.profileId) $('webHint').t
 mt.on('git:task', (t) => { logId = t.id; const st = $('g_state'); if (st) { st.className = 'badge'; st.textContent = 'đang chạy…'; } });
 mt.on('git:line', addLine);
 mt.on('ui:translate', showTranslate);
+mt.on('ui:update', (u) => {
+  if (!S) return;
+  const was = S.update && S.update.state; S.update = u;
+  if (u.open) { panel = 'settings'; render(); return; }
+  if (u.state === 'downloading' && was === 'downloading' && $('u_bar')) {   // progress only: no full re-render
+    const pct = u.total ? Math.min(100, Math.round((u.got / u.total) * 100)) : 0;
+    $('u_bar').style.width = pct + '%'; $('u_pct').textContent = `${pct}% · ${fmtMB(u.got)}${u.total ? ' / ' + fmtMB(u.total) : ''}`;
+    return;
+  }
+  if (panel === 'settings') renderUpdate();
+  updDot();
+});
 mt.on('git:done', async (d) => {
   if (panel === 'git') await renderGit();
   if (d.kind === 'prepare' && d.ok && d.prepared) showConfirm(d.prepared);

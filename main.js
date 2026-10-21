@@ -7,14 +7,17 @@ const fs = require('fs');
 const Store = require('./lib/store');
 const G = require('./lib/git');
 const { translate } = require('./lib/translate');
+const U = require('./lib/updater');
 
 const SIDEBAR = 76;
 const TOPBAR = 52;
 const IS_MAC = process.platform === 'darwin';
 const START_HIDDEN = process.argv.includes('--hidden');
 
+// bootstrap.js (packaged entry) already took the single-instance lock and chose bundled code vs a downloaded payload
+const BOOT = global.__mtBoot || { shellVersion: app.getVersion(), version: app.getVersion(), payload: null, trial: false, markGood: () => false };
 if (process.env.METATOOLS_USERDATA) app.setPath('userData', process.env.METATOOLS_USERDATA);   // tests / portable use
-if (!app.requestSingleInstanceLock()) { app.quit(); process.exit(0); }
+if (!global.__mtBoot && !app.requestSingleInstanceLock()) { app.quit(); process.exit(0); }
 
 let win = null;
 let tray = null;
@@ -49,6 +52,8 @@ function createWindow() {
   win.setMenuBarVisibility(false);
   win.loadFile(path.join(__dirname, 'ui', 'index.html'));
   win.once('ready-to-show', () => { if (!START_HIDDEN) win.show(); });
+  // a freshly updated payload counts as good once the window is up and nothing crashed for a few seconds
+  win.webContents.once('did-finish-load', () => setTimeout(confirmStart, Number(process.env.METATOOLS_UPDATE_GOOD_MS) || 10000));
   win.on('resize', layout);
   win.on('focus', () => sendUI('ui:focus', true));
   win.on('close', (e) => {
@@ -310,6 +315,7 @@ function updateTrayMenu() {
   tray.setContextMenu(Menu.buildFromTemplate([
     { label: 'Mở MetaTools', click: () => showWindow() },
     { type: 'separator' }, ...items, { type: 'separator' },
+    { label: upd.state === 'ready' ? `Khởi động lại để cập nhật ${upd.check.manifest.version}` : 'Kiểm tra cập nhật…', click: () => (upd.state === 'ready' ? restartToUpdate() : openUpdatePanel()) },
     { label: 'Thoát MetaTools', click: () => { quitting = true; app.quit(); } },
   ]));
 }
@@ -344,10 +350,11 @@ function cleanSlackUrl(u) {
 
 function publicState() {
   return {
-    version: app.getVersion(), platform: process.platform,
+    version: BOOT.version, shellVersion: BOOT.shellVersion, platform: process.platform,
     profiles: store.cfg.profiles, current, unread,
     news: Object.fromEntries(store.cfg.profiles.map((p) => [p.id, newCount(p.id)])),
-    settings: { openAtLogin: app.getLoginItemSettings().openAtLogin },
+    settings: { openAtLogin: app.getLoginItemSettings().openAtLogin, autoUpdate: store.cfg.settings.autoUpdate !== false },
+    update: updPublic(),
   };
 }
 
@@ -448,6 +455,12 @@ const handlers = {
     return true;
   },
   'app:quit': () => { quitting = true; app.quit(); return true; },
+  'upd:state': () => updPublic(),
+  'upd:check': () => checkUpdate(false),
+  'upd:download': () => downloadUpdate(),
+  'upd:restart': () => restartToUpdate(),
+  'upd:setAuto': (a) => { store.cfg.settings.autoUpdate = !!a.on; store.save(); return !!a.on; },
+  'upd:openFull': () => { const u = upd.check && (upd.check.fullUrl || null); if (u) shell.openExternal(u); return !!u; },
 
   // ---------------------------------------------------------------- git
   'git:state': async () => ({
@@ -587,6 +600,78 @@ function startGitTask(pairId, kind) {
   return { id: task.id };
 }
 
+// ------------------------------------------------------------------ in-app update (lib/updater.js + lib/boot.js)
+// state: idle | checking | latest | available | needFull | bad | downloading | ready | error
+const upd = { state: 'idle', check: null, error: '', got: 0, total: 0, notice: null };
+
+function updPublic() {
+  const c = upd.check;
+  return {
+    state: upd.state, error: upd.error, got: upd.got, total: upd.total, notice: upd.notice,
+    version: BOOT.version, shellVersion: BOOT.shellVersion, fromPayload: !!BOOT.payload,
+    checkedAt: store.cfg.settings.updateCheckedAt || 0, url: U.manifestUrl(),
+    latest: c ? { version: c.manifest.version, date: c.manifest.date, notes: c.manifest.notes, reason: c.reason || '', fullUrl: c.fullUrl } : null,
+  };
+}
+
+function updSet(patch) { Object.assign(upd, patch); sendUI('ui:update', updPublic()); updateTrayMenu(); }
+
+async function checkUpdate(auto) {
+  if (['checking', 'downloading', 'ready'].includes(upd.state)) return updPublic();
+  updSet({ state: 'checking', error: '' });
+  try {
+    const r = await U.check({
+      currentVersion: BOOT.version, shellVersion: BOOT.shellVersion, electronMajor: parseInt(process.versions.electron, 10),
+      platform: process.platform, arch: process.arch, bad: BOOT.boot ? BOOT.boot.readState(app.getPath('userData')).bad : [],
+    });
+    store.cfg.settings.updateCheckedAt = Date.now(); store.save();
+    updSet({ state: r.status, check: r });
+    if (auto && r.status === 'available') notify(`MetaTools ${r.manifest.version} đã có`, 'Bấm để xem thay đổi và cập nhật ngay trong app.', openUpdatePanel);
+  } catch (e) {
+    updSet({ state: 'error', error: e.message || String(e) });
+  }
+  return updPublic();
+}
+
+async function downloadUpdate() {
+  if (upd.state !== 'available') throw new Error('Không có bản mới để tải (bấm Kiểm tra cập nhật trước).');
+  updSet({ state: 'downloading', got: 0, total: upd.check.manifest.payload.size || 0, error: '' });
+  let last = 0;
+  try {
+    await U.download(upd.check.manifest, app.getPath('userData'), {
+      onProgress: ({ got, total }) => { upd.got = got; upd.total = total; if (Date.now() - last > 200) { last = Date.now(); sendUI('ui:update', updPublic()); } },
+    });
+    updSet({ state: 'ready' });
+    notify('Đã tải xong bản cập nhật', `Khởi động lại MetaTools để dùng bản ${upd.check.manifest.version}.`, openUpdatePanel);
+  } catch (e) {
+    updSet({ state: 'available', error: e.message || String(e) });
+    throw e;
+  }
+  return updPublic();
+}
+
+function restartToUpdate() {
+  if (upd.state !== 'ready') throw new Error('Chưa tải xong bản cập nhật.');
+  quitting = true;
+  app.relaunch({ args: process.argv.slice(1).filter((a) => a !== '--hidden') });
+  app.quit();   // before-quit still flushes cookies / storage
+  return true;
+}
+
+function openUpdatePanel() { showWindow(); sendUI('ui:update', { ...updPublic(), open: true }); if (upd.state === 'idle' || upd.state === 'error' || upd.state === 'latest') checkUpdate(false); }
+
+function confirmStart() {
+  if (!BOOT.trial) return;
+  BOOT.markGood();
+  console.log('[update] payload', BOOT.version, 'confirmed good');
+}
+
+function autoCheck() {
+  if (store.cfg.settings.autoUpdate === false || process.env.METATOOLS_SELFTEST || process.env.METATOOLS_UPDATE_SELFTEST) return;
+  if (Date.now() - (store.cfg.settings.updateCheckedAt || 0) < U.CHECK_EVERY) return;
+  checkUpdate(true);
+}
+
 // ------------------------------------------------------------------ app lifecycle
 app.on('second-instance', () => showWindow());
 
@@ -597,7 +682,14 @@ app.whenReady().then(() => {
   createWindow();
   if (!process.env.METATOOLS_NO_TRAY) createTray();
   refreshBadge();
+  // "rolled back" / "corrupt payload" notice left by lib/boot.js at this start
+  if (BOOT.boot) upd.notice = BOOT.boot.takeNotice(app.getPath('userData'));
+  if (upd.notice) notify('MetaTools đã quay về bản cũ', `Bản ${upd.notice.from} ${upd.notice.type === 'corrupt' ? 'bị hỏng file' : 'lỗi khi khởi động'}, đang chạy ${upd.notice.to}.`, openUpdatePanel);
   if (process.env.METATOOLS_SELFTEST) require('./test/selftest')({ win, handlers, store, views, events, layout, ensureView, routeLink, current: () => current });
+  if (process.env.METATOOLS_UPDATE_SELFTEST) require('./test/selftest-update')({ win, handlers, store, upd, BOOT, confirmStart });
+  // automatic update check: 30 s after start, then hourly (each check itself waits 6 h since the last one)
+  setTimeout(autoCheck, 30000);
+  setInterval(autoCheck, 3600 * 1000);
   // start every Slack in the background so notifications arrive without opening each one
   setTimeout(() => {
     for (const p of store.cfg.profiles) if (p.notify !== false) ensureView(p, 'slack');

@@ -14,5 +14,6 @@
 npm ci
 npm start                 # chạy app
 node test/git.test.js     # test lõi git (repo giả)
+node test/update.test.js  # test cập nhật trong app (manifest, sha256, quay về bản cũ)
 ```
-Đẩy tag `vX.Y.Z` thì GitHub Actions tự build Windows x64, Mac arm64 và Mac x64, rồi đính bộ cài vào Release.
+Đẩy tag `vX.Y.Z` thì GitHub Actions tự build Windows x64, Mac arm64 và Mac x64, rồi đính bộ cài vào Release. Job `payload` làm thêm `MetaTools-payload-<ver>.asar` và `metatools-update.json` cho tính năng cập nhật trong app (xem TIEN_DO.md).
