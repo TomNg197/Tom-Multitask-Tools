@@ -1,7 +1,8 @@
 'use strict';
 // node test/update.e2e.js  -- real Electron app (Xvfb via ~/workspace/tools/elx.sh), local HTTP update server:
-//   A: bundled 2.3.0 finds 2.3.1, downloads + verifies it   B: next start runs payload 2.3.1, confirms good
-//   C: a broken 2.3.2 payload (throws on load) exits        D: next start is back on 2.3.1 with a rollback notice
+//   A: bundled V0 finds V1, downloads + verifies it   B: next start runs payload V1, confirms good
+//   C: a broken V2 payload (throws on load) exits     D: next start is back on V1 with a rollback notice
+//   (V0 = package.json version, V1/V2 = the next two patch versions)
 const fs = require('fs'); const os = require('os'); const path = require('path'); const crypto = require('crypto');
 const { spawnSync, spawn } = require('child_process');
 const asar = require('@electron/asar');
@@ -47,26 +48,30 @@ function report(step, r) {
   for (const x of r.res) chk(`[${step}] ${x.n}`, x.ok, x.x);
 }
 
+const V0 = require('../package.json').version;
+const bump = (v, n) => v.replace(/(\d+)$/, (d) => String(+d + n));
+const V1 = bump(V0, 1); const V2 = bump(V0, 2);
+
 (async () => {
-  const P231 = await payloadFrom('2.3.1');
-  const P232 = await payloadFrom('2.3.2', "'use strict';\nthrow new Error('broken payload for the rollback test');\n");
+  const P231 = await payloadFrom(V1);
+  const P232 = await payloadFrom(V2, "'use strict';\nthrow new Error('broken payload for the rollback test');\n");
   // spawnSync (runApp) blocks this event loop, so the fake servers (public manifest + fake GitHub API) run in a child
   const TOKEN = 'github_pat_E2E_FAKE_0123456789abcdef';
   const seenFile = path.join(D, 'seen.jsonl');
   fs.writeFileSync(path.join(D, 'p231.asar'), P231);
-  const child = spawn(process.execPath, [path.join(__dirname, 'fake-update-server.js'), path.join(D, 'p231.asar'), '2.3.1', TOKEN, seenFile], { stdio: ['ignore', 'pipe', 'inherit'] });
+  const child = spawn(process.execPath, [path.join(__dirname, 'fake-update-server.js'), path.join(D, 'p231.asar'), V1, TOKEN, seenFile], { stdio: ['ignore', 'pipe', 'inherit'] });
   const srv = JSON.parse(await new Promise((r) => child.stdout.once('data', (d) => r(String(d)))));
   const url = srv.manifestUrl;
   try {
     report('A', runApp('A', { METATOOLS_UPDATE_URL: url }));
     report('B', runApp('B', { METATOOLS_UPDATE_URL: url }));
-    // C: stage a broken 2.3.2 by hand (as if downloaded + verified), start -> load throws -> exit 1, rollback recorded
-    fs.writeFileSync(path.join(boot.dirs(UD).payloads, '2.3.2.asar'), P232);
-    boot.stage(UD, { version: '2.3.2', file: '2.3.2.asar', sha256: sha(P232) });
+    // C: stage a broken V2 by hand (as if downloaded + verified), start -> load throws -> exit 1, rollback recorded
+    fs.writeFileSync(path.join(boot.dirs(UD).payloads, V2 + '.asar'), P232);
+    boot.stage(UD, { version: V2, file: V2 + '.asar', sha256: sha(P232) });
     const c = runApp('C', { METATOOLS_UPDATE_URL: url });
     const st = boot.readState(UD);
     chk('[C] broken payload exits instead of running', c.code === 1 && /broken payload for the rollback test/.test(c.log), 'exit ' + c.code);
-    chk('[C] crash recorded for rollback', st.current.version === '2.3.2' && !st.good && st.tries >= boot.MAX_TRIES, JSON.stringify(st));
+    chk('[C] crash recorded for rollback', st.current.version === V2 && !st.good && st.tries >= boot.MAX_TRIES, JSON.stringify(st));
     report('D', runApp('D', { METATOOLS_UPDATE_URL: url }));
     // G: optional token fallback (manifest URL 404 like a private repo) against the fake API: no token, wrong token,
     //    own token, token of a Git nick
@@ -76,7 +81,7 @@ function report(step, r) {
     const seen = fs.readFileSync(seenFile, 'utf8').trim().split('\n').filter(Boolean).map((l) => JSON.parse(l));
     chk('[G] manifest x2 + payload x1 went through the redirect host', seen.filter((e) => e.host === 'cdn').length === 3, JSON.stringify(seen.map((e) => e.host + e.path.slice(0, 40))));
     chk('[G] Authorization never reached the redirect host', seen.filter((e) => e.host === 'cdn').every((e) => !e.auth));
-    chk('[G] payload staged from the private release', boot.readState(UDG).pending && boot.readState(UDG).pending.version === '2.3.1');
+    chk('[G] payload staged from the private release', boot.readState(UDG).pending && boot.readState(UDG).pending.version === V1);
     chk('[G] token not stored in plain text', !fs.readFileSync(path.join(UDG, 'secrets.json'), 'utf8').includes(TOKEN) && !fs.readFileSync(path.join(UDG, 'config.json'), 'utf8').includes(TOKEN));
     chk('[G] token not in the app log', !fs.readFileSync(path.join(OUT, 'G.log'), 'utf8').includes(TOKEN));
   } finally {

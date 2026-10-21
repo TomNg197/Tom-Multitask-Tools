@@ -1,7 +1,7 @@
 'use strict';
 // MetaTools 2 — one desktop app (macOS / Windows): many Slack accounts, each with its own Google (Drive/Gmail) tab and
 // git accounts + pairs (pull newest branch -> push one snapshot commit, no personal history). No browser needed.
-const { app, BrowserWindow, WebContentsView, ipcMain, Tray, Menu, Notification, nativeImage, shell, session, dialog, safeStorage } = require('electron');
+const { app, BrowserWindow, WebContentsView, ipcMain, Tray, Menu, Notification, nativeImage, nativeTheme, shell, session, dialog, safeStorage } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const Store = require('./lib/store');
@@ -9,7 +9,8 @@ const G = require('./lib/git');
 const { translate } = require('./lib/translate');
 const U = require('./lib/updater');
 
-const SIDEBAR = 76;
+const SIDEBAR = 76;        // profile column
+const TABCOL = 200;        // vertical tab column of the selected profile (always shown next to a web view)
 const TOPBAR = 52;
 const IS_MAC = process.platform === 'darwin';
 const START_HIDDEN = process.argv.includes('--hidden');
@@ -43,14 +44,28 @@ function cleanUA(ua) {
 function iconPath(name) { return path.join(__dirname, 'assets', name); }
 
 // ------------------------------------------------------------------ window + layout
+// Translucent side columns (macOS 26 / Windows 11 look): vibrancy on macOS, Mica on Windows 11 22H2+ (build 22621),
+// solid colours elsewhere. The UI gets the choice as ?mat=... and only makes its columns see-through when it is real.
+function material() {
+  if (process.env.METATOOLS_MATERIAL) return process.env.METATOOLS_MATERIAL;   // tests
+  if (IS_MAC) return 'vibrancy';
+  if (process.platform === 'win32' && Number(require('os').release().split('.')[2] || 0) >= 22621) return 'mica';
+  return 'none';
+}
+
 function createWindow() {
+  const mat = material();
+  const glass = mat === 'vibrancy' || mat === 'mica';
   win = new BrowserWindow({
-    width: 1320, height: 860, minWidth: 900, minHeight: 600, show: false, title: 'MetaTools',
-    backgroundColor: '#1a1420', icon: iconPath('icon.png'),
+    width: 1320, height: 860, minWidth: 980, minHeight: 600, show: false, title: 'MetaTools',
+    backgroundColor: glass ? '#00000000' : (nativeTheme.shouldUseDarkColors ? '#1c1c1e' : '#f5f5f7'), icon: iconPath('icon.png'),
+    ...(IS_MAC ? { titleBarStyle: 'hiddenInset', trafficLightPosition: { x: 22, y: 20 } } : {}),
+    ...(mat === 'vibrancy' ? { vibrancy: 'sidebar', visualEffectState: 'followWindow' } : {}),
+    ...(mat === 'mica' ? { backgroundMaterial: 'mica' } : {}),
     webPreferences: { preload: path.join(__dirname, 'preload-ui.js'), contextIsolation: true, nodeIntegration: false, sandbox: true },
   });
   win.setMenuBarVisibility(false);
-  win.loadFile(path.join(__dirname, 'ui', 'index.html'));
+  win.loadFile(path.join(__dirname, 'ui', 'index.html'), { query: { mat, os: process.platform } });
   win.once('ready-to-show', () => { if (!START_HIDDEN) win.show(); });
   // a freshly updated payload counts as good once the window is up and nothing crashed for a few seconds
   win.webContents.once('did-finish-load', () => setTimeout(confirmStart, Number(process.env.METATOOLS_UPDATE_GOOD_MS) || 10000));
@@ -79,24 +94,29 @@ function sendUI(ch, data) { if (win && !win.isDestroyed()) win.webContents.send(
 
 function contentBounds() {
   const [w, h] = win.getContentSize();
-  return { x: SIDEBAR, y: TOPBAR, width: Math.max(100, w - SIDEBAR), height: Math.max(100, h - TOPBAR) };
+  const left = SIDEBAR + TABCOL;
+  return { x: left, y: TOPBAR, width: Math.max(100, w - left), height: Math.max(100, h - TOPBAR) };
 }
 
-function layout() {
+// Attach only the visible web view. Idempotent on purpose: the UI calls this on every render (badge counts change
+// whenever Slack's title does), and detaching + re-attaching the view that is already shown takes the keyboard focus
+// away from it. That broke typing mid-word, which UniKey on Windows shows first: its Backspace + new letters landed
+// outside the Slack box (v2.4 fix, test/selftest-ime.js).
+function layout(focusView) {
   if (!win) return;
   const cv = win.contentView;
-  // detach every web view, then attach only the visible one
+  const p = profile(current.profileId);
+  const want = p && !current.overlay && WEB_KINDS.includes(current.tab) ? ensureView(p, current.tab) : null;
   for (const pid of Object.keys(views)) {
     for (const k of WEB_KINDS) {
       const v = views[pid][k];
-      if (v && cv.children.includes(v)) cv.removeChildView(v);
+      if (v && v !== want && cv.children.includes(v)) cv.removeChildView(v);
     }
   }
-  const p = profile(current.profileId);
-  if (!p || current.overlay || !WEB_KINDS.includes(current.tab)) return;
-  const v = ensureView(p, current.tab);
-  cv.addChildView(v);
-  v.setBounds(contentBounds());
+  if (!want) return;
+  if (!cv.children.includes(want)) cv.addChildView(want);
+  want.setBounds(contentBounds());
+  if (focusView) want.webContents.focus();   // the user picked this profile / tab: typing goes straight there
 }
 
 // ------------------------------------------------------------------ profiles + web views
@@ -368,7 +388,7 @@ const handlers = {
       events.forEach((e) => { if (e.p === current.profileId && !e.read) { e.read = true; changed = true; } });
       if (changed) refreshBadge();
     }
-    layout();
+    layout(!!a.focus && win && win.isFocused());
     return true;
   },
   'app:nav': (a) => {
@@ -722,6 +742,8 @@ app.whenReady().then(() => {
   if (upd.notice) notify('MetaTools đã quay về bản cũ', `Bản ${upd.notice.from} ${upd.notice.type === 'corrupt' ? 'bị hỏng file' : 'lỗi khi khởi động'}, đang chạy ${upd.notice.to}.`, openUpdatePanel);
   if (process.env.METATOOLS_SELFTEST) require('./test/selftest')({ win, handlers, store, views, events, layout, ensureView, routeLink, current: () => current });
   if (process.env.METATOOLS_UPDATE_SELFTEST) require('./test/selftest-update')({ win, handlers, store, upd, BOOT, confirmStart });
+  if (process.env.METATOOLS_UI_SELFTEST) require('./test/selftest-ui')({ win, handlers, store, views });
+  if (process.env.METATOOLS_IME_SELFTEST) require('./test/selftest-ime')({ win, handlers, store, layout, ensureView, refreshBadge, ui: (js) => win.webContents.executeJavaScript(js, true) });
   // automatic update check: 30 s after start, then hourly (each check itself waits 6 h since the last one)
   setTimeout(autoCheck, 30000);
   setInterval(autoCheck, 3600 * 1000);

@@ -3,6 +3,8 @@
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const COLORS = ['#7c4dff', '#e91e63', '#ff7043', '#f9a825', '#43a047', '#00897b', '#1e88e5', '#5e35b1', '#6d4c41', '#546e7a'];
+// window material (vibrancy / mica / none) + OS from main, for the translucent columns and the macOS title bar area
+{ const q = new URLSearchParams(location.search); document.documentElement.dataset.mat = q.get('mat') || 'none'; document.documentElement.dataset.os = q.get('os') || ''; }
 let S = null;            // app state
 let GS = null;           // git state
 let cur = { profileId: null, tab: 'slack' };
@@ -43,18 +45,28 @@ function badgeOf(pid) {
   return '';
 }
 
+const TAB_NAMES = { slack: 'Slack', google: 'Drive / Gmail', trello: 'Trello', git: 'Git' };
+
 function render() {
-  $('profs').innerHTML = S.profiles.map((p) => `<div class="bub ${p.id === cur.profileId && panel !== 'feed' && panel !== 'settings' ? 'on' : ''}" data-id="${p.id}" style="background:${esc(p.color)}" title="${esc(p.name)}">${esc(initials(p.name))}${badgeOf(p.id)}</div>`).join('');
+  const focusedBub = document.activeElement && document.activeElement.classList.contains('bub') ? document.activeElement.dataset.id : null;
+  $('profs').innerHTML = S.profiles.map((p) => { const on = p.id === cur.profileId && panel !== 'feed' && panel !== 'settings';
+    return `<div class="bub ${on ? 'on' : ''}" role="button" tabindex="0" aria-current="${on ? 'true' : 'false'}" aria-label="${esc(p.name)}" data-id="${p.id}" style="background:${esc(p.color)}" title="${esc(p.name)}">${esc(initials(p.name))}${badgeOf(p.id)}</div>`; }).join('');
+  if (focusedBub) { const b = document.querySelector(`.bub[data-id="${focusedBub}"]`); if (b) b.focus(); }   // keyboard users keep their place
   const totalNew = Object.values(S.news).reduce((a, b) => a + b, 0);
   $('feedCnt').textContent = totalNew; $('feedCnt').classList.toggle('hidden', !totalNew);
   const p = prof(cur.profileId);
   if (!p && panel !== 'settings' && panel !== 'feed') panel = 'empty';
   else if (p && panel === 'empty') panel = cur.tab === 'git' ? 'git' : 'web';
-  $('pname').textContent = panel === 'feed' ? 'Tin mới' : panel === 'settings' ? 'Cài đặt' : (p ? p.name : 'MetaTools');
   const showTabs = p && (panel === 'web' || panel === 'git');
-  $('tabs').classList.toggle('hidden', !showTabs); $('editProf').classList.toggle('hidden', !showTabs);
+  $('pname').textContent = panel === 'feed' ? 'Tin mới' : panel === 'settings' ? 'Cài đặt' : showTabs ? `${p.name} · ${TAB_NAMES[cur.tab] || ''}` : (p ? p.name : 'MetaTools');
+  // profile column -> vertical tab column (only while a profile's tabs are shown) -> content
+  $('tabcol').classList.toggle('hidden', !showTabs); document.body.classList.toggle('withTabs', !!showTabs);
+  if (showTabs) { $('tcName').textContent = p.name; $('tcAva').textContent = initials(p.name); $('tcAva').style.background = p.color; }
   $('navs').classList.toggle('hidden', panel !== 'web');
-  document.querySelectorAll('#tabs button').forEach((b) => b.classList.toggle('on', b.dataset.tab === cur.tab));
+  document.querySelectorAll('#tabs button').forEach((b) => {
+    const on = b.dataset.tab === cur.tab;
+    b.classList.toggle('on', on); b.setAttribute('aria-selected', on ? 'true' : 'false'); b.tabIndex = on ? 0 : -1;
+  });
   for (const [id, k] of [['pWeb', 'web'], ['pGit', 'git'], ['pFeed', 'feed'], ['pSet', 'settings'], ['pEmpty', 'empty']]) $(id).classList.toggle('hidden', panel !== k);
   if (panel === 'git') renderGit();
   if (panel === 'feed') renderFeed();
@@ -64,14 +76,15 @@ function render() {
 }
 
 let markNext = false;
+let focusNext = false;   // move the keyboard focus into the web view (mouse picks only; keyboard users stay in the lists)
 function syncMain() {
   const overlay = !$('modal').classList.contains('hidden') || panel !== 'web';
-  mt.call('app:show', { profileId: cur.profileId, tab: panel === 'web' ? cur.tab : 'none', overlay, markRead: markNext });
-  markNext = false;
+  mt.call('app:show', { profileId: cur.profileId, tab: panel === 'web' ? cur.tab : 'none', overlay, markRead: markNext, focus: focusNext });
+  markNext = false; focusNext = false;
 }
 
-function selectProfile(id) { cur.profileId = id; panel = cur.tab === 'git' ? 'git' : 'web'; markNext = true; render(); }
-function selectTab(tab) { cur.tab = tab; panel = tab === 'git' ? 'git' : 'web'; markNext = true; render(); }
+function selectProfile(id, viaKey) { cur.profileId = id; panel = cur.tab === 'git' ? 'git' : 'web'; markNext = true; focusNext = !viaKey; render(); }
+function selectTab(tab, viaKey) { cur.tab = tab; panel = tab === 'git' ? 'git' : 'web'; markNext = true; focusNext = !viaKey; render(); }
 
 // ------------------------------------------------------------------ modal helpers
 function openModal(html) { $('modalBox').innerHTML = html; $('modal').classList.remove('hidden'); syncMain(); }
@@ -379,6 +392,20 @@ mt.on('git:done', async (d) => {
 
 // ------------------------------------------------------------------ wiring
 $('profs').addEventListener('click', (e) => { const b = e.target.closest('.bub'); if (b) selectProfile(b.dataset.id); });
+$('profs').addEventListener('keydown', (e) => {
+  const b = e.target.closest('.bub'); if (!b) return;
+  if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); selectProfile(b.dataset.id, true); }
+  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); const n = e.key === 'ArrowDown' ? b.nextElementSibling : b.previousElementSibling; if (n) n.focus(); }
+});
+// vertical tab list: arrows / Home / End move between tabs (roving tabindex), like a native tab list
+$('tabs').addEventListener('keydown', (e) => {
+  const list = [...document.querySelectorAll('#tabs button')]; const i = list.indexOf(document.activeElement);
+  if (i < 0) return;
+  const j = { ArrowDown: i + 1, ArrowUp: i - 1, Home: 0, End: list.length - 1 }[e.key];
+  if (j === undefined) return;
+  e.preventDefault();
+  const t = list[(j + list.length) % list.length]; selectTab(t.dataset.tab, true); t.focus();
+});
 $('profs').addEventListener('contextmenu', (e) => { const b = e.target.closest('.bub'); if (b) { e.preventDefault(); profileForm(prof(b.dataset.id)); } });
 $('addProf').onclick = () => profileForm(null);
 $('emptyAdd').onclick = () => profileForm(null);

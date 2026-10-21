@@ -1,0 +1,14 @@
+<!doctype html>
+<html lang="vi"><head><meta charset="utf-8"><title>IME test</title></head>
+<body>
+<!-- test page for test/selftest-ime.js: plain textarea, contenteditable (like Slack's composer), input -->
+<textarea id="ta" rows="3" cols="40"></textarea>
+<div id="ce" contenteditable="true" style="border:1px solid #888;min-height:40px"></div>
+<input id="inp">
+<script>
+  window.__keys = [];
+  for (const id of ['ta', 'ce', 'inp']) {
+    document.getElementById(id).addEventListener('keydown', (e) => window.__keys.push(id + ':' + e.key));
+  }
+</script>
+</body></html>

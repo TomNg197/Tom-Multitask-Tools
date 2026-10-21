@@ -5,7 +5,12 @@ const fs = require('fs');
 const path = require('path');
 const { app } = require('electron');
 
+// versions relative to the app under test: V0 = installed shell, V1 = next patch (good), V2 = the one after (broken)
+const bump = (v, n) => v.replace(/(\d+)$/, (d) => String(+d + n));
+const rx = (v) => new RegExp(v.replace(/\./g, '\\.'));
+
 module.exports = async function selftestUpdate(ctx) {
+  const V0 = ctx.BOOT.shellVersion; const V1 = bump(V0, 1); const V2 = bump(V0, 2);
   const out = process.env.METATOOLS_UPDATE_SELFTEST;
   const step = process.env.METATOOLS_UPDATE_STEP;
   fs.mkdirSync(out, { recursive: true });
@@ -22,11 +27,11 @@ module.exports = async function selftestUpdate(ctx) {
     chk('UI preload works', await ui("typeof mt === 'object' && typeof mt.call === 'function'"));
     const st = await call('app:state');
     if (step === 'A') {
-      chk('runs bundled 2.3.0', st.version === '2.3.0' && !st.update.fromPayload, st.version);
+      chk(`runs bundled ${V0}`, st.version === V0 && !st.update.fromPayload, st.version);
       const c = await call('upd:check');
-      chk('check finds 2.3.1', c.state === 'available' && c.latest.version === '2.3.1', c.state + ' ' + c.error);
+      chk(`check finds ${V1}`, c.state === 'available' && c.latest.version === V1, c.state + ' ' + c.error);
       await ui("panel='settings'; refresh()"); await wait(600);
-      chk('settings shows new version + notes', /2\.3\.1/.test(await ui("document.getElementById('updCard').textContent")) && /Bản thử 2\.3\.1/.test(await ui("document.getElementById('updCard').textContent")));
+      chk('settings shows new version + notes', rx(V1).test(await ui("document.getElementById('updCard').textContent")) && rx('Bản thử ' + V1).test(await ui("document.getElementById('updCard').textContent")));
       chk('update dot on settings button', await ui("!document.getElementById('updDot').classList.contains('hidden')"));
       await shot('A1_available');
       await ui("document.getElementById('u_dl').click()");
@@ -37,11 +42,11 @@ module.exports = async function selftestUpdate(ctx) {
       chk('restart button shown', await ui("!!document.getElementById('u_restart')"));
       await shot('A2_ready');
       const bs = ctx.BOOT.boot.readState(app.getPath('userData'));
-      chk('pending staged', bs.pending && bs.pending.version === '2.3.1');
+      chk('pending staged', bs.pending && bs.pending.version === V1);
     } else if (step === 'B') {
-      chk('runs payload 2.3.1 on trial', st.version === '2.3.1' && st.shellVersion === '2.3.0' && ctx.BOOT.payload && ctx.BOOT.trial, `${st.version} ${ctx.BOOT.payload}`);
-      chk('UI loaded from the payload', /2\.3\.1\.asar[\\/]ui[\\/]index\.html/.test(decodeURIComponent(ctx.win.webContents.getURL())), ctx.win.webContents.getURL());
-      chk('main.js loaded from the payload', __dirname.includes('2.3.1.asar'), __dirname);
+      chk(`runs payload ${V1} on trial`, st.version === V1 && st.shellVersion === V0 && ctx.BOOT.payload && ctx.BOOT.trial, `${st.version} ${ctx.BOOT.payload}`);
+      chk('UI loaded from the payload', new RegExp(rx(V1).source + '\\.asar[\\\\/]ui[\\\\/]index\\.html').test(decodeURIComponent(ctx.win.webContents.getURL())), ctx.win.webContents.getURL());
+      chk('main.js loaded from the payload', __dirname.includes(V1 + '.asar'), __dirname);
       for (let i = 0; i < 40 && ctx.BOOT.trial; i++) await wait(200);
       const bs = ctx.BOOT.boot.readState(app.getPath('userData'));
       chk('confirmed good after start', !ctx.BOOT.trial && bs.good && bs.tries === 0, JSON.stringify(bs));
@@ -68,7 +73,7 @@ module.exports = async function selftestUpdate(ctx) {
       chk('token saved (own)', s2.token.source === 'own' && s2.token.hasOwn);
       chk('token never shown back in the UI', !(await card()).includes(T) && (await ui("document.getElementById('u_token').value")) === '' && !JSON.stringify(s2).includes(T));
       c = await call('upd:check');
-      chk('check via private release works', c.state === 'available' && c.latest.version === '2.3.1' && /releases\/tag\/v2\.3\.1/.test(c.latest.fullUrl), c.state + ' ' + c.error);
+      chk('check via private release works', c.state === 'available' && c.latest.version === V1 && rx('releases/tag/v' + V1).test(c.latest.fullUrl), c.state + ' ' + c.error);
       // bonus: use the PAT of a github.com Git nick instead
       await call('upd:clearToken');
       const acc = await call('git:saveAccount', { label: 'Github sếp', host: 'github.com', user: 'TomNg197', email: 'tom@example.com', auth: 'pat', token: T });
@@ -82,12 +87,12 @@ module.exports = async function selftestUpdate(ctx) {
       await ui('refresh()'); await wait(500);
       await shot('G2_github_ready');
     } else if (step === 'D') {
-      chk('rolled back to 2.3.1 after broken 2.3.2', st.version === '2.3.1' && ctx.BOOT.payload, st.version);
-      chk('rollback notice', st.update.notice && st.update.notice.from === '2.3.2' && st.update.notice.to === '2.3.1', JSON.stringify(st.update.notice));
+      chk(`rolled back to ${V1} after broken ${V2}`, st.version === V1 && ctx.BOOT.payload, st.version);
+      chk('rollback notice', st.update.notice && st.update.notice.from === V2 && st.update.notice.to === V1, JSON.stringify(st.update.notice));
       await ui("panel='settings'; refresh()"); await wait(600);
-      chk('rollback notice shown in settings', /2\.3\.2/.test(await ui("document.getElementById('updCard').textContent")));
+      chk('rollback notice shown in settings', rx(V2).test(await ui("document.getElementById('updCard').textContent")));
       const bs = ctx.BOOT.boot.readState(app.getPath('userData'));
-      chk('2.3.2 marked bad', bs.bad.includes('2.3.2'));
+      chk(`${V2} marked bad`, bs.bad.includes(V2));
       await shot('D1_rollback');
     }
   } catch (e) {

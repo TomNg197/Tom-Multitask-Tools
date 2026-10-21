@@ -23,6 +23,7 @@ Phần Git cần có **Git** trên máy:
 - **Hồ sơ** (cột trái): mỗi hồ sơ gồm 1 tài khoản Slack, 1 tài khoản Google (Drive/Gmail) và các nick Git gắn kèm. Các phiên đăng nhập tách riêng, không lẫn nhau.
   - Bấm **+** để tạo hồ sơ.
   - Chuột phải vào một hồ sơ để sửa.
+- **Cột tab (từ bản 2.4):** chọn một hồ sơ thì cột thứ hai liệt kê các tab của hồ sơ đó (Slack, Drive/Gmail, Trello, Git) theo chiều dọc; nút **Sửa hồ sơ** ở cuối cột. Bàn phím: Tab để vào danh sách, ↑/↓ để đổi tab hoặc đổi hồ sơ, Enter để chọn.
 - **Tab Slack:** đăng nhập Slack một lần cho mỗi hồ sơ. Khi tắt app, phiên đăng nhập được ghi xuống đĩa nên không bị văng.
 - **Tab Drive/Gmail:** đăng nhập email công ty một lần cho mỗi hồ sơ.
   - Bấm link Drive/Docs/Sheets/Slides trong Slack thì link mở ngay trong tab này, đúng email của hồ sơ.
@@ -69,6 +70,11 @@ Phần Git cần có **Git** trên máy:
 - Một số bản đổi phần lõi (Electron). Với các bản đó app sẽ ghi **cần tải bản đầy đủ** và có nút mở link tải file zip.
 - Không cần token. Ô **GitHub token** trong mục Cập nhật chỉ dùng khi repo app bị để private, lúc đó app báo lỗi 404 và gợi ý dán token (fine-grained, Contents: Read-only).
 - Bản 2.2 trở về trước chưa có tính năng này, nên phải cài tay bản 2.3 một lần.
+
+## Gõ tiếng Việt (UniKey, Windows)
+- Bản 2.4 đã sửa lỗi ô soạn tin mất con trỏ giữa chừng, nguyên nhân làm UniKey bỏ dấu sai.
+- Nếu thỉnh thoảng vẫn bị lặp hoặc mất chữ (thường gặp ở mọi app nền Chromium như Slack desktop, Chrome, VS Code): mở UniKey → **Mở rộng** → tích **Luôn sử dụng clipboard cho unicode** → Đóng. Hoặc dùng EVKey, hoặc bộ gõ Vietnamese Telex có sẵn của Windows (Cài đặt → Thời gian và ngôn ngữ → Ngôn ngữ → Tiếng Việt).
+- Nếu app chạy bằng quyền Administrator thì UniKey cũng phải chạy bằng quyền Administrator, nếu không Windows sẽ chặn UniKey gửi phím vào app.
 
 ## Chuyển máy (Mac ⇄ Windows)
 Vào **Cài đặt → Xuất danh sách hồ sơ**, sang máy kia bấm **Nhập**. File chỉ chứa tên, workspace, Gmail, nick và cặp Git; **không có** token, SSH key hay phiên đăng nhập. Mỗi máy phải đăng nhập Slack/Google và nhập token (hoặc tạo key) lại một lần.

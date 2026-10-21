@@ -1,7 +1,7 @@
 {
   "name": "metatools",
   "productName": "MetaTools",
-  "version": "2.3.0",
+  "version": "2.4.0",
   "description": "Nhi\u1ec1u t\u00e0i kho\u1ea3n Slack + Drive/Gmail + c\u1eb7p Git trong m\u1ed9t app",
   "main": "bootstrap.js",
   "updateMinShell": "2.3.0",
