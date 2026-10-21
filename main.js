@@ -349,7 +349,16 @@ function createTray() {
 }
 
 // ------------------------------------------------------------------ IPC: app + profiles
-const PROFILE_FIELDS = ['name', 'color', 'slackUrl', 'gmail', 'trelloUrl', 'notify'];
+const PROFILE_FIELDS = ['name', 'color', 'slackUrl', 'gmail', 'trelloUrl', 'notify', 'logo'];
+
+// profile logo: a small square picture the UI already cropped/resized (data URL). Anything else is dropped.
+const LOGO_MAX = 400 * 1024;
+function cleanLogo(v) {
+  v = typeof v === 'string' ? v.trim() : '';
+  if (!v) return '';
+  if (v.length > LOGO_MAX || !/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(v)) throw new Error('Logo phải là ảnh PNG/JPEG/WebP nhỏ hơn 300 KB.');
+  return v;
+}
 
 function cleanTrelloUrl(u) {
   u = (u || '').trim();
@@ -406,7 +415,7 @@ const handlers = {
     if (!name) throw new Error('Đặt tên cho hồ sơ (ví dụ: Công ty, Khách A).');
     const gmail = String(d.gmail || '').trim();
     if (gmail && !/^[^@\s]+@[^@\s]+\.[a-z]{2,}$/i.test(gmail)) throw new Error('Gmail không hợp lệ.');
-    const vals = { name, color: d.color || '#7c4dff', slackUrl: cleanSlackUrl(d.slackUrl), gmail, trelloUrl: cleanTrelloUrl(d.trelloUrl), notify: d.notify !== false };
+    const vals = { name, color: d.color || '#7c4dff', slackUrl: cleanSlackUrl(d.slackUrl), gmail, trelloUrl: cleanTrelloUrl(d.trelloUrl), notify: d.notify !== false, logo: cleanLogo(d.logo) };
     let p = d.id && profile(d.id);
     if (p) {
       const slackChanged = p.slackUrl !== vals.slackUrl;
@@ -460,7 +469,9 @@ const handlers = {
   'app:import': async () => {
     const r = await dialog.showOpenDialog(win, { properties: ['openFile'], filters: [{ name: 'JSON', extensions: ['json'] }] });
     if (r.canceled || !r.filePaths[0]) return null;
-    const res = store.importData(JSON.parse(fs.readFileSync(r.filePaths[0], 'utf8')));
+    const data = JSON.parse(fs.readFileSync(r.filePaths[0], 'utf8'));
+    for (const p of (data && Array.isArray(data.profiles) ? data.profiles : [])) { try { p.logo = cleanLogo(p.logo); } catch { p.logo = ''; } }   // bad logo in a file: drop it, keep the profile
+    const res = store.importData(data);
     updateTrayMenu(); refreshBadge();
     return res;
   },
@@ -579,7 +590,7 @@ const handlers = {
   },
   'git:deletePair': (a) => { store.cfg.pairs = store.cfg.pairs.filter((x) => x.id !== a.id); delete prepared[a.id]; store.save(); return true; },
   'git:run': (a) => startGitTask(a.pairId, a.kind),
-  'git:push': (a) => startGitTask(a.pairId, 'push'),
+  'git:push': (a) => startGitTask(a.pairId, 'push', { message: a.message }),
   'git:cancel': (a) => { delete prepared[a.pairId]; return true; },
   'git:clearLog': () => { logHistory.length = 0; return true; },
   'git:log': (a) => (a.all ? { lines: logHistory.slice(), done: !task || task.done } : task ? { id: task.id, lines: task.lines.slice(a.since || 0), count: task.lines.length, done: task.done, ok: task.ok } : { lines: [], count: 0, done: true }),
@@ -603,7 +614,7 @@ function gitCtx(pair) {
   };
 }
 
-function startGitTask(pairId, kind) {
+function startGitTask(pairId, kind, opts) {
   if (task && !task.done) throw new Error('Đang có việc Git khác chạy, chờ xong rồi bấm lại.');
   const pair = store.cfg.pairs.find((x) => x.id === pairId); if (!pair) throw new Error('Không có cặp này.');
   const title = { pull: 'Pull', prepare: 'Chuẩn bị push', push: 'Push' }[kind] + `: ${pair.name}`;
@@ -618,7 +629,8 @@ function startGitTask(pairId, kind) {
       prepared[pair.id] = await G.prepare(pair, ctx);
       pair.last = { ...(pair.last || {}), branch: prepared[pair.id].srcBranch, sha: prepared[pair.id].sha, date: prepared[pair.id].srcDate, pulledAt: Date.now() };
     } else {
-      const pr = prepared[pair.id]; if (!pr) throw new Error('Chưa chuẩn bị. Bấm Pull + Push trước.');
+      let pr = prepared[pair.id]; if (!pr) throw new Error('Chưa chuẩn bị. Bấm Pull + Push trước.');
+      if (opts && typeof opts.message === 'string') pr = prepared[pair.id] = await G.rewordPrepared(pr, opts.message, ctx);   // message edited in the confirm box
       const r = await G.push(pr, ctx);
       pair.last = { ...(pair.last || {}), pushedAt: Date.now(), pushedSha: pr.sha, pushedBranch: pr.dstBranch };
       delete prepared[pair.id];

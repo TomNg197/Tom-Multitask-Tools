@@ -64,6 +64,14 @@ const pair = { id: 'p1', srcUrl: path.join(D, 'src.git'), dstUrl: path.join(D, '
   // T6 prefix target branch
   p = await G.prepare({ ...pair, srcMode: 'fixed', srcBranch: 'main', dstMode: 'prefix', dstBranch: 'sync/' }, ctx); await G.push(p, ctx);
   chk('T6 prefix branch created', sh("git branch --format='%(refname:short)'", path.join(D, 'tgt.git')).split('\n').includes('sync/main'));
+  // T7 commit message edited in the confirm box before push: same tree, new message, still the target nick
+  sh('echo w>w.txt && git add w.txt && git commit -qm w && git push -q ../src.git main', path.join(D, 'src'), me);
+  p = await G.prepare(fixed, ctx);
+  const treeBefore = sh(`git rev-parse ${p.commit}^{tree}`, path.join(D, 'work', 'dst'));
+  p = await G.rewordPrepared(p, 'Sửa tay: cập nhật màn chơi\n\nchi tiết dòng 2', ctx); await G.push(p, ctx);
+  chk('T7 edited commit message pushed, tree unchanged', sh('git log -1 --format=%B main', path.join(D, 'tgt.git')).startsWith('Sửa tay: cập nhật màn chơi') && sh('git rev-parse main^{tree}', path.join(D, 'tgt.git')) === treeBefore && sh('git log -1 --format=%ae main', path.join(D, 'tgt.git')) === 'dev@congty.vn');
+  let empty = false; try { await G.rewordPrepared(p, '   ', ctx); } catch { empty = true; }
+  chk('T8 empty commit message refused', empty);
   console.log(ok, '/', tot);
   fs.rmSync(D, { recursive: true, force: true });
   process.exit(ok === tot ? 0 : 1);

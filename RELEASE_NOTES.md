@@ -1,6 +1,10 @@
 ## MetaTools 2.4
 
-**Mới ở bản 2.4.1:** cột tab chỉ còn **biểu tượng** (logo Slack, Drive, Trello, Git), không còn chữ, cột hẹp lại để khung nội dung rộng hơn. Rê chuột vào biểu tượng để xem tên.
+**Mới ở bản 2.4.2:**
+- **Logo cho từng hồ sơ:** Sửa hồ sơ → Logo → Chọn ảnh (app tự cắt vuông, thu nhỏ 128 px). Bấm "Bỏ logo" để quay về chữ viết tắt + màu.
+- **Sửa nội dung commit trước khi push:** khung xác nhận có ô commit điền sẵn theo mẫu, sửa xong mới bấm Đẩy lên (code, nhánh, người đứng tên giữ nguyên).
+
+**Bản 2.4.1:** cột tab chỉ còn **biểu tượng** (logo Slack, Drive, Trello, Git), không còn chữ, cột hẹp lại để khung nội dung rộng hơn. Rê chuột vào biểu tượng để xem tên.
 
 Một app cho Mac và Windows gồm nhiều tài khoản Slack, mỗi tài khoản có Drive/Gmail riêng và các nick Git gắn kèm. Không cần trình duyệt, không có server riêng.
 

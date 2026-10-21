@@ -29,6 +29,26 @@ function initials(name) {
 }
 
 function prof(id) { return S && S.profiles.find((p) => p.id === id); }
+// avatar of a profile: its logo when it has one, else initials on its colour
+function avatarHtml(p) { return p.logo ? `<img class="logo" src="${esc(p.logo)}" alt="">` : esc(initials(p.name)); }
+function setAvatar(el, p) { el.innerHTML = avatarHtml(p); el.style.background = p.logo ? 'var(--card)' : p.color; el.classList.toggle('hasLogo', !!p.logo); }
+// picked file -> square PNG (centre crop), at most 128 px, so the profile file stays small
+function readLogo(file) {
+  return new Promise((ok, bad) => {
+    if (!file || !/^image\//.test(file.type)) return bad(new Error('Chọn một file ảnh (PNG, JPG, WebP…).'));
+    // read as data: URL (the page CSP allows data: images, not blob:)
+    const fr = new FileReader(); const img = new Image();
+    img.onload = () => {
+      const s = Math.min(img.naturalWidth, img.naturalHeight), n = Math.min(128, s) || 128;
+      const c = document.createElement('canvas'); c.width = c.height = n;
+      c.getContext('2d').drawImage(img, (img.naturalWidth - s) / 2, (img.naturalHeight - s) / 2, s, s, 0, 0, n, n);
+      ok(c.toDataURL('image/png'));
+    };
+    img.onerror = () => bad(new Error('Không đọc được ảnh này.'));
+    fr.onload = () => { img.src = fr.result; }; fr.onerror = () => bad(new Error('Không đọc được file ảnh.'));
+    fr.readAsDataURL(file);
+  });
+}
 
 // ------------------------------------------------------------------ main state + layout
 async function refresh() {
@@ -50,7 +70,7 @@ const TAB_NAMES = { slack: 'Slack', google: 'Drive / Gmail', trello: 'Trello', g
 function render() {
   const focusedBub = document.activeElement && document.activeElement.classList.contains('bub') ? document.activeElement.dataset.id : null;
   $('profs').innerHTML = S.profiles.map((p) => { const on = p.id === cur.profileId && panel !== 'feed' && panel !== 'settings';
-    return `<div class="bub ${on ? 'on' : ''}" role="button" tabindex="0" aria-current="${on ? 'true' : 'false'}" aria-label="${esc(p.name)}" data-id="${p.id}" style="background:${esc(p.color)}" title="${esc(p.name)}">${esc(initials(p.name))}${badgeOf(p.id)}</div>`; }).join('');
+    return `<div class="bub ${on ? 'on' : ''}" role="button" tabindex="0" aria-current="${on ? 'true' : 'false'}" aria-label="${esc(p.name)}" data-id="${p.id}" style="background:${p.logo ? 'var(--card)' : esc(p.color)}" title="${esc(p.name)}">${avatarHtml(p)}${badgeOf(p.id)}</div>`; }).join('');
   if (focusedBub) { const b = document.querySelector(`.bub[data-id="${focusedBub}"]`); if (b) b.focus(); }   // keyboard users keep their place
   const totalNew = Object.values(S.news).reduce((a, b) => a + b, 0);
   $('feedCnt').textContent = totalNew; $('feedCnt').classList.toggle('hidden', !totalNew);
@@ -61,7 +81,7 @@ function render() {
   $('pname').textContent = panel === 'feed' ? 'Tin mới' : panel === 'settings' ? 'Cài đặt' : showTabs ? `${p.name} · ${TAB_NAMES[cur.tab] || ''}` : (p ? p.name : 'MetaTools');
   // profile column -> vertical tab column (only while a profile's tabs are shown) -> content
   $('tabcol').classList.toggle('hidden', !showTabs); document.body.classList.toggle('withTabs', !!showTabs);
-  if (showTabs) { $('tcAva').textContent = initials(p.name); $('tcAva').style.background = p.color; $('tcAva').title = p.name; $('tcAva').setAttribute('aria-label', p.name); }   // icon-only column: name stays in the top bar + tooltip
+  if (showTabs) { setAvatar($('tcAva'), p); $('tcAva').title = p.name; $('tcAva').setAttribute('aria-label', p.name); }   // icon-only column: name stays in the top bar + tooltip
   $('navs').classList.toggle('hidden', panel !== 'web');
   document.querySelectorAll('#tabs button').forEach((b) => {
     const on = b.dataset.tab === cur.tab;
@@ -111,12 +131,20 @@ function profileForm(p) {
   <label>Workspace Slack</label><input id="f_slack" value="${esc(p.slackUrl || '')}" placeholder="https://tencongty.slack.com (để trống = chọn khi đăng nhập)">
   <label>Gmail đi kèm (mở Drive/Docs đúng tài khoản)</label><input id="f_gmail" value="${esc(p.gmail || '')}" placeholder="ten@congty.com">
   <label>Trello (tuỳ chọn: link bảng hoặc workspace mở sẵn)</label><input id="f_trello" value="${esc(p.trelloUrl || '')}" placeholder="https://trello.com/w/tencongty (để trống = trang chủ Trello)">
-  <label>Màu</label>${colorPicker('f_color', p.color)}
+  <label>Logo (tuỳ chọn)</label>
+  <div class="row"><div class="logoPrev" id="f_logoPrev"></div><button id="f_logoPick">Chọn ảnh…</button><button class="ghost" id="f_logoDel">Bỏ logo</button><input type="file" id="f_logoFile" accept="image/png,image/jpeg,image/webp,image/gif" class="hidden"></div>
+  <label>Màu (khi không có logo)</label>${colorPicker('f_color', p.color)}
   <label style="display:flex;gap:8px;align-items:center;color:var(--ink)"><input type="checkbox" id="f_notify" style="width:auto" ${p.notify !== false ? 'checked' : ''}> Báo tin mới (chạy ngầm cả khi đóng cửa sổ)</label>
   <div class="row" style="margin-top:16px">${p.id ? '<button class="err" id="f_del">Xoá hồ sơ</button>' : ''}<span class="grow"></span><button id="f_cancel">Huỷ</button><button class="pri" id="f_save">Lưu</button></div>`);
+  let logo = p.logo || '';
+  const showLogo = () => { setAvatar($('f_logoPrev'), { name: $('f_name').value || p.name || '?', color: pickedColor('f_color') || p.color, logo }); $('f_logoDel').classList.toggle('hidden', !logo); };
+  showLogo(); $('f_name').addEventListener('input', showLogo); $('f_color').addEventListener('click', () => setTimeout(showLogo));
+  $('f_logoPick').onclick = () => $('f_logoFile').click();
+  $('f_logoFile').onchange = async (e) => { try { logo = await readLogo(e.target.files[0]); showLogo(); } catch (err) { toast(err.message, true); } e.target.value = ''; };
+  $('f_logoDel').onclick = () => { logo = ''; showLogo(); };
   $('f_cancel').onclick = closeModal;
   $('f_save').onclick = async () => {
-    const r = await call('prof:save', { id: p.id, name: $('f_name').value, slackUrl: $('f_slack').value, gmail: $('f_gmail').value, trelloUrl: $('f_trello').value, color: pickedColor('f_color'), notify: $('f_notify').checked });
+    const r = await call('prof:save', { id: p.id, name: $('f_name').value, slackUrl: $('f_slack').value, gmail: $('f_gmail').value, trelloUrl: $('f_trello').value, color: pickedColor('f_color'), notify: $('f_notify').checked, logo });
     closeModal(); cur.profileId = r.id; if (!p.id) { cur.tab = 'slack'; panel = 'web'; } await refresh();
   };
   if (p.id) $('f_del').onclick = async () => {
@@ -333,14 +361,19 @@ function showConfirm(pr) {
   <div class="kv"><div>Nick đích</div><div><b>${esc(pr.dstUser)}</b> · ${esc(pr.dstHost)} ✓ đã kiểm tra</div>
   <div>Repo đích</div><div class="mono">${esc(pr.dstUrl)}</div><div>Nhánh đích</div><div><b>${esc(pr.dstBranch)}</b>${pr.newBranch ? ' (nhánh mới)' : ''}</div>
   <div>Code lấy từ</div><div>nhánh <b>${esc(pr.srcBranch)}</b> @ ${esc(pr.sha.slice(0, 8))} (${esc(String(pr.srcDate).slice(0, 16))})</div>
-  <div>Commit sẽ tạo</div><div>"${esc(pr.message)}", đứng tên <b>${esc(pr.dstUser)} &lt;${esc(pr.dstEmail)}&gt;</b></div>
+  <div>Đứng tên</div><div><b>${esc(pr.dstUser)} &lt;${esc(pr.dstEmail)}&gt;</b></div>
   <div>Thay đổi</div><div><b>${esc(pr.stat || '—')}</b> (${pr.fileCount} file)</div></div>
+  ${pr.noChange ? '' : `<label>Nội dung commit (sửa được trước khi đẩy)</label><textarea id="c_msg" rows="3" spellcheck="false">${esc(pr.message)}</textarea>`}
   ${pr.lfs ? '<div class="warnbox">Repo nguồn dùng Git LFS: chỉ chép file con trỏ LFS, file lớn sẽ không có trên repo đích.</div>' : ''}
   <div class="mute small">Không mang lịch sử commit, tên hay email cá nhân sang. Toàn bộ file trên nhánh đích được thay bằng code nguồn. Không bao giờ ghi đè (force push).</div>
   ${pr.files && pr.files.length ? `<div class="files mono">${pr.files.map(esc).join('<br>')}${pr.fileCount > pr.files.length ? '<br>…' : ''}</div>` : ''}
   <div class="row" style="margin-top:14px"><span class="grow"></span><button id="c_cancel">Huỷ</button>${pr.noChange ? '' : '<button class="ok" id="c_push">Đẩy lên</button>'}</div>`);
   $('c_cancel').onclick = async () => { closeModal(); await call('git:cancel', { pairId: pr.pairId }); renderGit(); };
-  if (!pr.noChange) $('c_push').onclick = async () => { closeModal(); await call('git:push', { pairId: pr.pairId }); renderGit(); };
+  if (!pr.noChange) $('c_push').onclick = async () => {
+    const message = $('c_msg').value.trim();
+    if (!message) { toast('Nội dung commit không được để trống.', true); $('c_msg').focus(); return; }
+    closeModal(); await call('git:push', { pairId: pr.pairId, message }); renderGit();
+  };
 }
 
 // ------------------------------------------------------------------ translation popup

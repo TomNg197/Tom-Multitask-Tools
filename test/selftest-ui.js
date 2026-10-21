@@ -56,6 +56,19 @@ module.exports = async function selftestUi(ctx) {
     ctx.win.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'Return' }); ctx.win.webContents.sendInputEvent({ type: 'char', keyCode: '\r' });
     await wait(500);
     chk('Enter on a profile bubble selects it', (await ui("document.querySelector('.bub.on').dataset.id")) === p2id);
+    // 2.4.2: profile logo — a picture made in the page goes through readLogo (crop/resize) and prof:save
+    const logoLen = await ui(`(async () => { const c = document.createElement('canvas'); c.width = 300; c.height = 200; const g = c.getContext('2d');
+      g.fillStyle = '#ff8a00'; g.fillRect(0, 0, 300, 200); g.fillStyle = '#1e88e5'; g.beginPath(); g.arc(150, 100, 70, 0, 7); g.fill();
+      const blob = await new Promise((r) => c.toBlob(r, 'image/png')); const logo = await readLogo(new File([blob], 'l.png', { type: 'image/png' }));
+      const p = prof(cur.profileId); await mt.call('prof:save', { ...p, logo }); await refresh(); return logo.length; })()`);
+    await wait(400);
+    const lg = JSON.parse(await ui(`JSON.stringify({ bub: !!document.querySelector('.bub.on img.logo'), tc: !!document.querySelector('#tcAva img.logo'),
+      size: (() => { const i = document.querySelector('.bub.on img.logo'); return i ? i.naturalWidth + 'x' + i.naturalHeight : ''; })() })`));
+    chk('profile logo shown in the profile column and the tab column', lg.bub && lg.tc && lg.size === '128x128', JSON.stringify(lg) + ' len=' + logoLen);
+    let rejected = false;
+    try { await ctx.handlers['prof:save']({ ...ctx.store.cfg.profiles[1], logo: 'data:text/html;base64,PHNjcmlwdD4=' }); } catch { rejected = true; }
+    chk('non-image logo is refused', rejected);
+    await shot('04b_logo');
     await ui("panel = 'settings'; render()"); await wait(500);
     chk('no tab column outside profile tabs', await ui("document.getElementById('tabcol').classList.contains('hidden')"));
     await shot('04_settings');
