@@ -25,7 +25,7 @@ module.exports = async function selftest(ctx) {
     chk('empty state shown', await ui("!document.getElementById('pEmpty').classList.contains('hidden')"));
 
     // profiles
-    const p1 = await call('prof:save', { name: 'Công ty MetaX', slackUrl: '', gmail: 'thomas@metax.vn', color: '#7c4dff' });
+    const p1 = await call('prof:save', { name: 'Công ty MetaX', slackUrl: '', gmail: 'user@example.com', color: '#7c4dff' });
     const p2 = await call('prof:save', { name: 'Khách A', slackUrl: 'https://app.slack.com/client', color: '#e91e63' });
     let bad = false; try { await call('prof:save', { name: 'x', slackUrl: 'https://evil.com' }); } catch (e) { bad = /Slack/.test(e.message); }
     chk('reject non-slack url', bad);
