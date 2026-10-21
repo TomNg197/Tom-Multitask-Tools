@@ -78,7 +78,7 @@ function render() {
   if (!p && panel !== 'settings' && panel !== 'feed') panel = 'empty';
   else if (p && panel === 'empty') panel = cur.tab === 'git' ? 'git' : 'web';
   const showTabs = p && (panel === 'web' || panel === 'git');
-  $('pname').textContent = panel === 'feed' ? 'Tin mới' : panel === 'settings' ? 'Cài đặt' : showTabs ? `${p.name} · ${TAB_NAMES[cur.tab] || ''}` : (p ? p.name : 'MetaTools');
+  $('pname').textContent = panel === 'feed' ? 'Tin mới' : panel === 'settings' ? 'Cài đặt' : showTabs ? `${p.name} · ${TAB_NAMES[cur.tab] || ''}` : (p ? p.name : 'Tom Multitask');
   // profile column -> vertical tab column (only while a profile's tabs are shown) -> content
   $('tabcol').classList.toggle('hidden', !showTabs); document.body.classList.toggle('withTabs', !!showTabs);
   if (showTabs) { setAvatar($('tcAva'), p); $('tcAva').title = p.name; $('tcAva').setAttribute('aria-label', p.name); }   // icon-only column: name stays in the top bar + tooltip
@@ -171,8 +171,8 @@ function renderSettings() {
   <label style="display:flex;gap:8px;align-items:center;color:var(--ink)"><input type="checkbox" id="s_login" style="width:auto" ${S.settings.openAtLogin ? 'checked' : ''}> Tự chạy ngầm khi mở máy (để không lỡ tin)</label>
   <div class="row" style="margin-top:14px"><button id="s_export">Xuất danh sách hồ sơ</button><button id="s_import">Nhập danh sách hồ sơ</button></div>
   <div class="mute small" style="margin-top:6px">Dùng để chuyển sang máy Mac/Windows khác. File chỉ có tên, workspace, Gmail, nick và cặp Git; <b>không có</b> token, SSH key hay phiên đăng nhập (mỗi máy đăng nhập/nhập token lại 1 lần).</div>
-  <div class="row" style="margin-top:18px"><button class="err" id="s_quit">Thoát hẳn MetaTools</button><span class="mute small">Đóng cửa sổ thì app vẫn chạy ở khay để nhận tin.</span></div>
-  <div class="mute small" style="margin-top:14px">MetaTools ${esc(S.version)} · ${esc(S.platform)}</div></div>
+  <div class="row" style="margin-top:18px"><button class="err" id="s_quit">Thoát hẳn Tom Multitask</button><span class="mute small">Đóng cửa sổ thì app vẫn chạy ở khay để nhận tin.</span></div>
+  <div class="brandRow"><img src="logo.svg" alt="" width="40" height="40"><div><b>Tom Multitask</b><div class="mute small">${esc(S.version)} · ${esc(S.platform)}</div></div></div></div>
   <div class="card" id="updCard"></div>`;
   $('s_login').onchange = async (e) => { await call('app:setLogin', { on: e.target.checked }); await refresh(); };
   $('s_export').onclick = async () => { const f = await call('app:export'); if (f) toast('Đã lưu ' + f); };
@@ -194,7 +194,7 @@ function renderUpdate() {
   box.innerHTML = `<h2>Cập nhật ${head}</h2>
   <div class="mute small">Đang chạy <b>${esc(u.version)}</b>${u.fromPayload ? ` (bản cập nhật trong app, bộ cài gốc ${esc(u.shellVersion)})` : ''}${u.checkedAt ? ` · kiểm tra lúc ${esc(new Date(u.checkedAt).toLocaleString())}` : ''}</div>
   ${u.notice ? `<div class="warnbox">Bản ${esc(u.notice.from)} ${u.notice.type === 'corrupt' ? 'bị hỏng file' : 'lỗi khi khởi động'} nên app đã tự quay về ${esc(u.notice.to)}.</div>` : ''}
-  ${L && u.state !== 'latest' ? `<div style="margin-top:10px"><b>MetaTools ${esc(L.version)}</b> <span class="mute small">${esc(String(L.date).slice(0, 10))}</span></div>
+  ${L && u.state !== 'latest' ? `<div style="margin-top:10px"><b>Tom Multitask ${esc(L.version)}</b> <span class="mute small">${esc(String(L.date).slice(0, 10))}</span></div>
     ${L.notes ? `<div class="trSrc" id="u_notes" style="margin-top:6px;max-height:180px">${esc(L.notes)}</div>` : ''}
     ${L.reason ? `<div class="warnbox">${esc(L.reason)}</div>` : ''}` : ''}
   ${u.state === 'downloading' ? `<div class="prog" style="margin-top:10px"><div id="u_bar" style="width:${pct}%"></div></div><div class="mute small" id="u_pct">${pct}% · ${fmtMB(u.got)}${u.total ? ' / ' + fmtMB(u.total) : ''}</div>` : ''}

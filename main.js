@@ -13,6 +13,9 @@ const SIDEBAR = 76;        // profile column
 const TABCOL = 64;        // vertical tab column of the selected profile (always shown next to a web view)
 const TOPBAR = 52;
 const IS_MAC = process.platform === 'darwin';
+// 2.5.0: tên hiển thị đổi thành "Tom Multitask"; productName trong package.json vẫn là MetaTools để thư mục dữ liệu
+// (hồ sơ, phiên đăng nhập, khoá mã hoá, bản cập nhật) giữ nguyên chỗ cũ trên máy đã cài
+const APP_NAME = 'Tom Multitask';
 const START_HIDDEN = process.argv.includes('--hidden');
 
 // bootstrap.js (packaged entry) already took the single-instance lock and chose bundled code vs a downloaded payload
@@ -57,7 +60,7 @@ function createWindow() {
   const mat = material();
   const glass = mat === 'vibrancy' || mat === 'mica';
   win = new BrowserWindow({
-    width: 1320, height: 860, minWidth: 980, minHeight: 600, show: false, title: 'MetaTools',
+    width: 1320, height: 860, minWidth: 980, minHeight: 600, show: false, title: APP_NAME,
     backgroundColor: glass ? '#00000000' : (nativeTheme.shouldUseDarkColors ? '#1c1c1e' : '#f5f5f7'), icon: iconPath('icon.png'),
     ...(IS_MAC ? { titleBarStyle: 'hiddenInset', trafficLightPosition: { x: 22, y: 20 } } : {}),
     ...(mat === 'vibrancy' ? { vibrancy: 'sidebar', visualEffectState: 'followWindow' } : {}),
@@ -77,7 +80,7 @@ function createWindow() {
     win.hide();
     if (!store.cfg.settings.trayHintShown) {
       store.cfg.settings.trayHintShown = true; store.save();
-      notify('MetaTools vẫn đang chạy', 'App chạy ngầm ở khay hệ thống để nhận tin Slack. Thoát hẳn: chuột phải biểu tượng → Thoát.');
+      notify(`${APP_NAME} vẫn đang chạy`, 'App chạy ngầm ở khay hệ thống để nhận tin Slack. Thoát hẳn: chuột phải biểu tượng → Thoát.');
     }
   });
   win.webContents.setWindowOpenHandler(({ url }) => { shell.openExternal(url); return { action: 'deny' }; });
@@ -300,7 +303,7 @@ function refreshBadge() {
   if (win && process.platform === 'win32') {
     win.setOverlayIcon(total || dot ? nativeImage.createFromPath(iconPath('badge.png')) : null, total ? `${total} tin chưa đọc` : '');
   }
-  if (tray) { tray.setToolTip(total ? `MetaTools: ${total} tin chưa đọc` : 'MetaTools'); updateTrayMenu(); }
+  if (tray) { tray.setToolTip(total ? `${APP_NAME}: ${total} tin chưa đọc` : APP_NAME); updateTrayMenu(); }
   sendUI('ui:badges', { unread, news: Object.fromEntries(store.cfg.profiles.map((p) => [p.id, newCount(p.id)])) });
 }
 
@@ -333,17 +336,17 @@ function updateTrayMenu() {
     return { label: `${p.name}${n ? `  (${n})` : u === '•' ? '  •' : ''}`, click: () => { current = { ...current, profileId: p.id, tab: 'slack' }; showWindow(p.id); sendUI('ui:tab', 'slack'); layout(); } };
   });
   tray.setContextMenu(Menu.buildFromTemplate([
-    { label: 'Mở MetaTools', click: () => showWindow() },
+    { label: `Mở ${APP_NAME}`, click: () => showWindow() },
     { type: 'separator' }, ...items, { type: 'separator' },
     { label: upd.state === 'ready' ? `Khởi động lại để cập nhật ${upd.check.manifest.version}` : 'Kiểm tra cập nhật…', click: () => (upd.state === 'ready' ? restartToUpdate() : openUpdatePanel()) },
-    { label: 'Thoát MetaTools', click: () => { quitting = true; app.quit(); } },
+    { label: `Thoát ${APP_NAME}`, click: () => { quitting = true; app.quit(); } },
   ]));
 }
 
 function createTray() {
   const img = nativeImage.createFromPath(iconPath(IS_MAC ? 'trayTemplate.png' : 'tray.png'));
   tray = new Tray(img.isEmpty() ? nativeImage.createFromPath(iconPath('icon.png')).resize({ width: 16, height: 16 }) : img);
-  tray.setToolTip('MetaTools');
+  tray.setToolTip(APP_NAME);
   tray.on('click', () => showWindow());
   updateTrayMenu();
 }
@@ -692,7 +695,7 @@ async function checkUpdate(auto) {
     }, { token });
     store.cfg.settings.updateCheckedAt = Date.now(); store.save();
     updSet({ state: r.status, check: r });
-    if (auto && r.status === 'available') notify(`MetaTools ${r.manifest.version} đã có`, 'Bấm để xem thay đổi và cập nhật ngay trong app.', openUpdatePanel);
+    if (auto && r.status === 'available') notify(`${APP_NAME} ${r.manifest.version} đã có`, 'Bấm để xem thay đổi và cập nhật ngay trong app.', openUpdatePanel);
   } catch (e) {
     updSet({ state: 'error', error: e.message || String(e) });
   }
@@ -709,7 +712,7 @@ async function downloadUpdate() {
       onProgress: ({ got, total }) => { upd.got = got; upd.total = total; if (Date.now() - last > 200) { last = Date.now(); sendUI('ui:update', updPublic()); } },
     });
     updSet({ state: 'ready' });
-    notify('Đã tải xong bản cập nhật', `Khởi động lại MetaTools để dùng bản ${upd.check.manifest.version}.`, openUpdatePanel);
+    notify('Đã tải xong bản cập nhật', `Khởi động lại ${APP_NAME} để dùng bản ${upd.check.manifest.version}.`, openUpdatePanel);
   } catch (e) {
     updSet({ state: 'available', error: e.message || String(e) });
     throw e;
@@ -744,6 +747,9 @@ app.on('second-instance', () => showWindow());
 
 app.whenReady().then(() => {
   app.setAppUserModelId('vn.metax.metatools');
+  // bộ cài cũ (MetaTools.app) chạy bản cập nhật trong app vẫn mang icon cũ trong bundle: đặt icon dock lúc chạy cho khớp logo mới
+  if (IS_MAC && app.dock) { try { app.dock.setIcon(iconPath('icon.png')); } catch (_) { /* không quan trọng */ } }
+  app.setAboutPanelOptions({ applicationName: APP_NAME, applicationVersion: BOOT.version });
   app.userAgentFallback = cleanUA(app.userAgentFallback);
   store = new Store(app.getPath('userData'), safeStorage);
   createWindow();
@@ -751,7 +757,7 @@ app.whenReady().then(() => {
   refreshBadge();
   // "rolled back" / "corrupt payload" notice left by lib/boot.js at this start
   if (BOOT.boot) upd.notice = BOOT.boot.takeNotice(app.getPath('userData'));
-  if (upd.notice) notify('MetaTools đã quay về bản cũ', `Bản ${upd.notice.from} ${upd.notice.type === 'corrupt' ? 'bị hỏng file' : 'lỗi khi khởi động'}, đang chạy ${upd.notice.to}.`, openUpdatePanel);
+  if (upd.notice) notify(`${APP_NAME} đã quay về bản cũ`, `Bản ${upd.notice.from} ${upd.notice.type === 'corrupt' ? 'bị hỏng file' : 'lỗi khi khởi động'}, đang chạy ${upd.notice.to}.`, openUpdatePanel);
   if (process.env.METATOOLS_SELFTEST) require('./test/selftest')({ win, handlers, store, views, events, layout, ensureView, routeLink, current: () => current });
   if (process.env.METATOOLS_UPDATE_SELFTEST) require('./test/selftest-update')({ win, handlers, store, upd, BOOT, confirmStart });
   if (process.env.METATOOLS_UI_SELFTEST) require('./test/selftest-ui')({ win, handlers, store, views });

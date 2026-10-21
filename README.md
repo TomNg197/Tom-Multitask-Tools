@@ -1,6 +1,6 @@
 # Tom-Multitask-Tools
 
-## MetaTools: Slack + Drive/Gmail + Git trong một app (Mac / Windows)
+## Tom Multitask (trước đây là MetaTools): Slack + Drive/Gmail + Trello + Git trong một app (Mac / Windows)
 
 - **Hồ sơ**: mỗi hồ sơ gồm 1 tài khoản Slack (phiên đăng nhập riêng), 1 tab Drive/Gmail và các nick Git gắn kèm. Link Drive bấm trong Slack mở đúng email công ty của hồ sơ đó.
 - **Tin mới**: thông báo thật của hệ điều hành, số tin chưa đọc trên từng hồ sơ, chạy ngầm ở khay hệ thống.

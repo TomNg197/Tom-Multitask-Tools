@@ -1,19 +1,19 @@
-# MetaTools 2.1: Slack + Drive/Gmail + Trello + Git trong một app
+# Tom Multitask (trước đây là MetaTools): Slack + Drive/Gmail + Trello + Git trong một app
 
 Một app duy nhất cho Mac và Windows. Không cần trình duyệt, không cần Python, không có server riêng: mọi thứ chạy trên máy, nói chuyện thẳng với Slack, Google, GitHub và GitLab.
 
 ## Cài đặt
 **Windows**
-1. Giải nén `MetaTools-win32-x64.zip` vào một thư mục cố định, ví dụ `C:\Tools\MetaTools`.
-2. Mở `MetaTools.exe`. Lần đầu Windows có thể hiện "Windows protected your PC": bấm **More info → Run anyway**. App chưa ký số nên mới có cảnh báo này.
-3. Muốn có lối tắt: chuột phải `MetaTools.exe` → Send to → Desktop.
+1. Giải nén `TomMultitask-Windows-x64.zip` vào một thư mục cố định, ví dụ `C:\Tools\Tom Multitask`.
+2. Mở `Tom Multitask.exe`. Lần đầu Windows có thể hiện "Windows protected your PC": bấm **More info → Run anyway**. App chưa ký số nên mới có cảnh báo này.
+3. Muốn có lối tắt: chuột phải `Tom Multitask.exe` → Send to → Desktop.
 
 **Mac**
 1. Mac chip Apple (M1/M2/M3/M4) dùng bản `darwin-arm64`; Mac chip Intel dùng bản `darwin-x64`.
-2. Giải nén, kéo `MetaTools.app` vào thư mục **Applications**.
+2. Giải nén, kéo `Tom Multitask.app` vào thư mục **Applications**.
 3. Lần đầu mở, macOS sẽ chặn. Có hai cách mở:
    - Vào **System Settings → Privacy & Security**, kéo xuống, bấm **Open Anyway**.
-   - Hoặc mở Terminal, chạy: `xattr -cr /Applications/MetaTools.app` rồi mở app lại.
+   - Hoặc mở Terminal, chạy: `xattr -cr "/Applications/Tom Multitask.app"` rồi mở app lại.
 
 Phần Git cần có **Git** trên máy:
 - Mac: chạy `xcode-select --install`.
@@ -80,5 +80,5 @@ Phần Git cần có **Git** trên máy:
 Vào **Cài đặt → Xuất danh sách hồ sơ**, sang máy kia bấm **Nhập**. File chỉ chứa tên, workspace, Gmail, nick và cặp Git; **không có** token, SSH key hay phiên đăng nhập. Mỗi máy phải đăng nhập Slack/Google và nhập token (hoặc tạo key) lại một lần.
 
 ## Dữ liệu nằm ở đâu
-- Windows: `%APPDATA%\MetaTools`
+- Windows: `%APPDATA%\MetaTools` (tên thư mục giữ như cũ từ thời MetaTools để không mất dữ liệu khi đổi tên)
 - Mac: `~/Library/Application Support/MetaTools`

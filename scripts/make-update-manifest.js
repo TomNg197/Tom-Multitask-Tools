@@ -30,7 +30,7 @@ const m = {
   minShell: pkg.updateMinShell || pkg.version,   // oldest installed build (bootstrap) able to run this payload
   electron: parseInt(require(path.join(root, 'node_modules/electron/package.json')).version, 10),
   payload: { url: b + path.basename(payload), sha256: crypto.createHash('sha256').update(buf).digest('hex'), size: buf.length },
-  full: { 'win32-x64': b + 'MetaTools-Windows-x64.zip', 'darwin-arm64': b + 'MetaTools-Mac-AppleChip.zip', 'darwin-x64': b + 'MetaTools-Mac-Intel.zip' },
+  full: { 'win32-x64': b + 'TomMultitask-Windows-x64.zip', 'darwin-arm64': b + 'TomMultitask-Mac-AppleChip.zip', 'darwin-x64': b + 'TomMultitask-Mac-Intel.zip' },
 };
 fs.writeFileSync(arg('out', 'metatools-update.json'), JSON.stringify(m, null, 2));
 console.log(JSON.stringify({ ...m, notes: m.notes.slice(0, 80) + '…' }, null, 2));

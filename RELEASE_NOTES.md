@@ -1,6 +1,12 @@
-## MetaTools 2.4
+## Tom Multitask 2.5 (trước đây là MetaTools)
 
-**Mới ở bản 2.4.2:**
+**Mới ở bản 2.5.0:**
+- **Đổi tên thành Tom Multitask**, có logo mới (chồng cửa sổ trên nền cam–hồng) cho icon app, khay hệ thống và thông báo.
+- **Giao diện đồng bộ với logo:** màu nhấn đổi từ tím sang cam–hồng, nút chính dùng dải màu của logo, màn hình chào và mục Cài đặt có logo.
+- **Dữ liệu giữ nguyên:** hồ sơ, phiên đăng nhập và token vẫn nằm trong thư mục cũ `MetaTools`, nên không phải đăng nhập lại.
+- Cập nhật trong app (từ 2.3 trở lên) thì đổi được tên, giao diện, icon cửa sổ và icon khay. **Icon của file exe/app và lối tắt trên Desktop/taskbar vẫn là icon cũ** cho tới khi tải bộ cài 2.5 mới (giải nén đè hoặc sang thư mục mới đều được, dữ liệu không mất).
+
+**Bản 2.4.2:**
 - **Logo cho từng hồ sơ:** Sửa hồ sơ → Logo → Chọn ảnh (app tự cắt vuông, thu nhỏ 128 px). Bấm "Bỏ logo" để quay về chữ viết tắt + màu.
 - **Sửa nội dung commit trước khi push:** khung xác nhận có ô commit điền sẵn theo mẫu, sửa xong mới bấm Đẩy lên (code, nhánh, người đứng tên giữ nguyên).
 
@@ -24,12 +30,12 @@ Một app cho Mac và Windows gồm nhiều tài khoản Slack, mỗi tài kho�
 
 | Máy | File |
 |---|---|
-| Windows 10/11 | `MetaTools-Windows-x64.zip` |
-| Mac chip Apple (M1/M2/M3/M4) | `MetaTools-Mac-AppleChip.zip` |
-| Mac chip Intel | `MetaTools-Mac-Intel.zip` |
+| Windows 10/11 | `TomMultitask-Windows-x64.zip` |
+| Mac chip Apple (M1/M2/M3/M4) | `TomMultitask-Mac-AppleChip.zip` |
+| Mac chip Intel | `TomMultitask-Mac-Intel.zip` |
 
 Lần đầu mở app sẽ có cảnh báo vì app chưa ký số chính thức:
 - Windows: bấm **More info → Run anyway**.
-- Mac: vào **System Settings → Privacy & Security → Open Anyway**, hoặc chạy `xattr -cr /Applications/MetaTools.app`.
+- Mac: vào **System Settings → Privacy & Security → Open Anyway**, hoặc chạy `xattr -cr "/Applications/Tom Multitask.app"`.
 
 Hướng dẫn đầy đủ nằm trong file `HUONG_DAN.md` (có sẵn trong file zip).

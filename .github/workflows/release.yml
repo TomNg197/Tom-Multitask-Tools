@@ -1,4 +1,4 @@
-name: Build & Release MetaTools
+name: Build & Release Tom Multitask (MetaTools)
 
 on:
   push:
@@ -36,41 +36,43 @@ jobs:
         run: node test/git.test.js && node test/update.test.js
       - name: Package
         shell: bash
+        # 2.5.0: app hiện tên "Tom Multitask" (exe/.app/zip). productName trong package.json vẫn MetaTools để dữ liệu
+        # trên máy đã cài (userData), khoá mã hoá và bản cập nhật trong app giữ nguyên; payload/manifest giữ tên cũ vì bản cũ tìm đúng tên đó
         run: |
           VERSION=$(node -p "require('./package.json').version")
-          EXTRA=""
-          if [ "${{ matrix.platform }}" = "darwin" ]; then EXTRA="--icon=assets/icon.icns --app-bundle-id=vn.metax.metatools"; fi
-          if [ "${{ matrix.platform }}" = "win32" ]; then EXTRA="--icon=assets/icon.ico --win32metadata.CompanyName=MetaX --win32metadata.ProductName=MetaTools --win32metadata.FileDescription=MetaTools"; fi
-          npx @electron/packager . MetaTools --platform=${{ matrix.platform }} --arch=${{ matrix.arch }} --out=dist --asar --overwrite --prune=true \
-            $PKG_IGNORE --app-copyright=MetaX --app-version=$VERSION $EXTRA
+          EXTRA=()
+          if [ "${{ matrix.platform }}" = "darwin" ]; then EXTRA=(--icon=assets/icon.icns --app-bundle-id=vn.metax.metatools); fi
+          if [ "${{ matrix.platform }}" = "win32" ]; then EXTRA=(--icon=assets/icon.ico --win32metadata.CompanyName=MetaX "--win32metadata.ProductName=Tom Multitask" "--win32metadata.FileDescription=Tom Multitask"); fi
+          npx @electron/packager . "Tom Multitask" --platform=${{ matrix.platform }} --arch=${{ matrix.arch }} --out=dist --asar --overwrite --prune=true \
+            $PKG_IGNORE --app-copyright=MetaX --app-version=$VERSION "${EXTRA[@]}"
       - name: Sign (macOS, ad-hoc until the company Developer ID is added)
         if: runner.os == 'macOS'
-        run: codesign --force --deep --sign - "dist/MetaTools-darwin-${{ matrix.arch }}/MetaTools.app"
+        run: codesign --force --deep --sign - "dist/Tom Multitask-darwin-${{ matrix.arch }}/Tom Multitask.app"
       - name: Zip (macOS)
         if: runner.os == 'macOS'
         run: |
-          mkdir -p out/MetaTools
-          ditto "dist/MetaTools-darwin-${{ matrix.arch }}/MetaTools.app" out/MetaTools/MetaTools.app
-          cp HUONG_DAN.md out/MetaTools/
-          cd out && ditto -c -k --sequesterRsrc --keepParent MetaTools "../MetaTools-${{ matrix.name }}.zip"
+          mkdir -p "out/Tom Multitask"
+          ditto "dist/Tom Multitask-darwin-${{ matrix.arch }}/Tom Multitask.app" "out/Tom Multitask/Tom Multitask.app"
+          cp HUONG_DAN.md "out/Tom Multitask/"
+          cd out && ditto -c -k --sequesterRsrc --keepParent "Tom Multitask" "../TomMultitask-${{ matrix.name }}.zip"
       - name: Zip (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force out | Out-Null
-          Copy-Item -Recurse "dist/MetaTools-win32-x64" out/MetaTools
-          Copy-Item HUONG_DAN.md out/MetaTools/
-          Compress-Archive -Path out/MetaTools -DestinationPath "MetaTools-${{ matrix.name }}.zip" -CompressionLevel Optimal
+          Copy-Item -Recurse "dist/Tom Multitask-win32-x64" "out/Tom Multitask"
+          Copy-Item HUONG_DAN.md "out/Tom Multitask/"
+          Compress-Archive -Path "out/Tom Multitask" -DestinationPath "TomMultitask-${{ matrix.name }}.zip" -CompressionLevel Optimal
       - uses: actions/upload-artifact@v4
         with:
-          name: MetaTools-${{ matrix.name }}
-          path: MetaTools-${{ matrix.name }}.zip
+          name: TomMultitask-${{ matrix.name }}
+          path: TomMultitask-${{ matrix.name }}.zip
       - name: Attach to release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
-          files: MetaTools-${{ matrix.name }}.zip
-          name: MetaTools ${{ github.ref_name }}
+          files: TomMultitask-${{ matrix.name }}.zip
+          name: Tom Multitask ${{ github.ref_name }}
           body_path: RELEASE_NOTES.md
 
   # app payload for the in-app updater: the same app.asar the installers carry (pure JS, one file for every platform)
@@ -109,6 +111,6 @@ jobs:
           files: |
             MetaTools-payload-*.asar
             metatools-update.json
-          name: MetaTools ${{ github.ref_name }}
+          name: Tom Multitask ${{ github.ref_name }}
           body_path: RELEASE_NOTES.md
 
