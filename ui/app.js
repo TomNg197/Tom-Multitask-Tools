@@ -61,7 +61,7 @@ function render() {
   $('pname').textContent = panel === 'feed' ? 'Tin mới' : panel === 'settings' ? 'Cài đặt' : showTabs ? `${p.name} · ${TAB_NAMES[cur.tab] || ''}` : (p ? p.name : 'MetaTools');
   // profile column -> vertical tab column (only while a profile's tabs are shown) -> content
   $('tabcol').classList.toggle('hidden', !showTabs); document.body.classList.toggle('withTabs', !!showTabs);
-  if (showTabs) { $('tcName').textContent = p.name; $('tcAva').textContent = initials(p.name); $('tcAva').style.background = p.color; }
+  if (showTabs) { $('tcAva').textContent = initials(p.name); $('tcAva').style.background = p.color; $('tcAva').title = p.name; $('tcAva').setAttribute('aria-label', p.name); }   // icon-only column: name stays in the top bar + tooltip
   $('navs').classList.toggle('hidden', panel !== 'web');
   document.querySelectorAll('#tabs button').forEach((b) => {
     const on = b.dataset.tab === cur.tab;

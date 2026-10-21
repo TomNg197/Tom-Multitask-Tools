@@ -1,5 +1,7 @@
 ## MetaTools 2.4
 
+**Mới ở bản 2.4.1:** cột tab chỉ còn **biểu tượng** (logo Slack, Drive, Trello, Git), không còn chữ, cột hẹp lại để khung nội dung rộng hơn. Rê chuột vào biểu tượng để xem tên.
+
 Một app cho Mac và Windows gồm nhiều tài khoản Slack, mỗi tài khoản có Drive/Gmail riêng và các nick Git gắn kèm. Không cần trình duyệt, không có server riêng.
 
 **Mới ở bản 2.4:**

@@ -7,7 +7,7 @@
   --side:#ebebef;--side-glass:rgba(236,236,241,.62);--tab:#f2f2f5;--tab-glass:rgba(246,246,249,.55);
   --pri:#7c4dff;--pri2:#6a3df0;--pri-soft:rgba(124,77,255,.13);--ok:#28a745;--err:#e0355a;--warn:#c98a00;
   --shadow:0 1px 2px rgba(0,0,0,.05),0 6px 20px rgba(0,0,0,.06);--shadow-lg:0 24px 70px rgba(0,0,0,.28);
-  --r:14px;--r-sm:10px;--side-w:76px;--tab-w:200px;--top-h:52px;
+  --r:14px;--r-sm:10px;--side-w:76px;--tab-w:64px;--top-h:52px;
   color-scheme:light;
 }
 @media (prefers-color-scheme:dark){:root{
@@ -52,18 +52,19 @@ html[data-os=darwin] #side>*{-webkit-app-region:no-drag}
 .sideBtn.add{font-size:24px;font-weight:400;color:var(--pri);background:transparent;box-shadow:inset 0 0 0 1.5px var(--line2)}
 
 /* column 2: tabs of the selected profile */
-#tabcol{position:fixed;left:var(--side-w);top:0;bottom:0;width:var(--tab-w);background:var(--tab);border-right:1px solid var(--line);display:flex;flex-direction:column;padding:14px 10px;gap:6px;z-index:3}
+#tabcol{position:fixed;left:var(--side-w);top:0;bottom:0;width:var(--tab-w);background:var(--tab);border-right:1px solid var(--line);display:flex;flex-direction:column;align-items:center;padding:14px 0;gap:8px;z-index:3}
 html:not([data-mat=none]) #tabcol{background:var(--tab-glass)}
 html[data-os=darwin] #tabcol{-webkit-app-region:drag}html[data-os=darwin] #tabcol>*{-webkit-app-region:no-drag}
-.tcHead{display:flex;align-items:center;gap:10px;padding:4px 6px 12px;border-bottom:1px solid var(--line);margin-bottom:6px;min-height:var(--top-h)}
-.tcAva{flex:none;width:30px;height:30px;border-radius:9px;color:#fff;font-weight:700;font-size:12px;display:flex;align-items:center;justify-content:center;box-shadow:inset 0 1px 0 rgba(255,255,255,.28)}
-.tcName{font-weight:700;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.vtabs{display:flex;flex-direction:column;gap:2px}
-.vtabs button{display:flex;align-items:center;gap:10px;width:100%;text-align:left;background:transparent;color:var(--ink);border-radius:var(--r-sm);padding:8px 10px;font-weight:500}
+.tcHead{display:flex;align-items:center;justify-content:center;padding:4px 0 12px;border-bottom:1px solid var(--line);margin-bottom:4px;width:44px}
+.tcAva{flex:none;width:34px;height:34px;border-radius:10px;color:#fff;font-weight:700;font-size:12px;display:flex;align-items:center;justify-content:center;box-shadow:inset 0 1px 0 rgba(255,255,255,.28)}
+.vtabs{display:flex;flex-direction:column;gap:6px;align-items:center}
+.vtabs button{position:relative;display:flex;align-items:center;justify-content:center;width:44px;height:44px;padding:0;background:transparent;border-radius:12px}
 .vtabs button:hover{background:var(--hover)}
-.vtabs button.on{background:var(--pri-soft);color:var(--pri);font-weight:650}
-.vtabs .ic{width:20px;text-align:center;font-size:15px}
-.tcEdit{width:100%}
+.vtabs button.on{background:var(--card);box-shadow:0 1px 3px rgba(0,0,0,.16),0 0 0 .5px var(--line)}
+.vtabs button.on::before{content:'';position:absolute;left:-10px;top:12px;bottom:12px;width:3px;border-radius:3px;background:var(--pri)}
+.vtabs .ic{display:flex;width:24px;height:24px}.vtabs svg{width:24px;height:24px}
+.vtabs button:not(.on) svg{filter:saturate(.85);opacity:.92}
+.tcEdit{width:40px;height:40px;padding:0;display:flex;align-items:center;justify-content:center;border-radius:12px;color:var(--mute);background:transparent;box-shadow:inset 0 0 0 1px var(--line2)}.tcEdit svg{width:18px;height:18px}.tcEdit:hover{color:var(--ink);background:var(--hover)}
 
 /* top bar of the content (title + web navigation) */
 #top{position:fixed;left:var(--side-w);right:0;top:0;height:var(--top-h);display:flex;align-items:center;gap:10px;padding:0 16px;background:var(--bg);border-bottom:1px solid var(--line);z-index:2}

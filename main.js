@@ -10,7 +10,7 @@ const { translate } = require('./lib/translate');
 const U = require('./lib/updater');
 
 const SIDEBAR = 76;        // profile column
-const TABCOL = 200;        // vertical tab column of the selected profile (always shown next to a web view)
+const TABCOL = 64;        // vertical tab column of the selected profile (always shown next to a web view)
 const TOPBAR = 52;
 const IS_MAC = process.platform === 'darwin';
 const START_HIDDEN = process.argv.includes('--hidden');
