@@ -50,12 +50,25 @@ module.exports = async function selftestUi(ctx) {
     chk('ArrowDown moves to Drive / Gmail, focus stays in the list', k.sel === 'google' && k.foc === 'google', JSON.stringify(k));
     await ui("selectTab('git')"); await wait(800);
     await shot('03_git');
-    // profile bubbles: focusable, Enter selects
+    // 2.6.0: hồ sơ nằm trong bảng trượt; mở bảng thì web view lùi sang phải 280 px
+    await ui("selectTab('slack')"); await wait(600);
+    const x0 = v.getBounds().x;
+    await ui('openFly()'); await wait(500);
+    const fl = JSON.parse(await ui("JSON.stringify({ open: !document.getElementById('profFly').classList.contains('hidden'), rows: document.querySelectorAll('#profs .bub').length, names: [...document.querySelectorAll('#profs .bName')].map((n) => n.textContent) })"));
+    chk('profile flyout opens with one row per profile', fl.open && fl.rows === 3 && fl.names[0] === 'Công ty MetaX', JSON.stringify(fl));
+    chk('web view moves right while the flyout is open', v.getBounds().x === x0 + 280, x0 + ' -> ' + v.getBounds().x);
+    await shot('03b_profiles_fly');
+    // profile rows: focusable, Enter selects (and closes the flyout)
     const p2id = ctx.store.cfg.profiles[1].id;
     await ui(`document.querySelector('.bub[data-id="${p2id}"]').focus()`);
     ctx.win.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'Return' }); ctx.win.webContents.sendInputEvent({ type: 'char', keyCode: '\r' });
     await wait(500);
     chk('Enter on a profile bubble selects it', (await ui("document.querySelector('.bub.on').dataset.id")) === p2id);
+    chk('flyout closes after picking + web view back in place', (await ui("document.getElementById('profFly').classList.contains('hidden')")) && ctx.views[p2id].slack.getBounds().x === x0, String(ctx.views[p2id].slack && ctx.views[p2id].slack.getBounds().x));
+    ctx.win.webContents.sendInputEvent({ type: 'keyDown', keyCode: '3', modifiers: ['control'] }); ctx.win.webContents.sendInputEvent({ type: 'keyUp', keyCode: '3', modifiers: ['control'] });
+    await wait(400);
+    chk('Ctrl+3 jumps to the 3rd profile', (await ui('cur.profileId')) === ctx.store.cfg.profiles[2].id);
+    await ui(`selectProfile(${JSON.stringify(p2id)})`); await wait(300);
     // 2.4.2: profile logo — a picture made in the page goes through readLogo (crop/resize) and prof:save
     const logoLen = await ui(`(async () => { const c = document.createElement('canvas'); c.width = 300; c.height = 200; const g = c.getContext('2d');
       g.fillStyle = '#ff8a00'; g.fillRect(0, 0, 300, 200); g.fillStyle = '#1e88e5'; g.beginPath(); g.arc(150, 100, 70, 0, 7); g.fill();
@@ -72,6 +85,21 @@ module.exports = async function selftestUi(ctx) {
     await ui("panel = 'settings'; render()"); await wait(500);
     chk('no tab column outside profile tabs', await ui("document.getElementById('tabcol').classList.contains('hidden')"));
     await shot('04_settings');
+    // 2.6.0: quản lý dự án
+    const today = new Date(); const iso = (d) => d.toISOString().slice(0, 10);
+    await ctx.handlers['proj:save']({ name: 'Ride a Pet 1.2', status: 'doing', due: iso(new Date(today.getTime() + 2 * 864e5)), owner: 'Thomas', progress: 60, profileIds: [ctx.store.cfg.profiles[0].id, ctx.store.cfg.profiles[1].id], tasks: [{ text: 'Build APK', done: true }, { text: 'Test máy thật' }] });
+    await ctx.handlers['proj:save']({ name: 'Hospital Pet', status: 'waiting', due: iso(new Date(today.getTime() - 3 * 864e5)), progress: 30, profileIds: [ctx.store.cfg.profiles[2].id] });
+    await ctx.handlers['proj:save']({ name: 'GTA mobile one-pager', status: 'done', progress: 100 });
+    let pbad = false; try { await ctx.handlers['proj:save']({ name: ' ' }); } catch { pbad = true; }
+    chk('project without a name is refused', pbad);
+    await ui("refresh().then(() => { panel = 'projects'; render(); })"); await wait(600);
+    const pj = JSON.parse(await ui("JSON.stringify({ cards: document.querySelectorAll('#pProj .pj').length, late: document.getElementById('projCnt').textContent, hasLateChip: !!document.querySelector('#pProj .pchip.late') })"));
+    chk('projects panel: open projects shown, overdue / due-soon counted', pj.cards === 2 && pj.late === '2' && pj.hasLateChip, JSON.stringify(pj));
+    await shot('05_projects');
+    await ui("document.querySelector('#pProj .pj').click()"); await wait(500);
+    chk('project form shows quick links for linked profiles', await ui("document.querySelectorAll('#modalBox [data-go]').length === 4 * document.querySelectorAll('.j_prof:checked').length && document.querySelectorAll('#modalBox [data-go]').length > 0"));
+    await shot('06_project_form');
+    await ui('closeModal()'); await wait(200);
     await ui('profileForm(prof(cur.profileId))'); await wait(400);
     await shot('05_edit_profile');
     await ui('closeModal()');

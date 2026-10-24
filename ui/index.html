@@ -7,13 +7,19 @@
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
-<nav id="side" aria-label="Hồ sơ">
-  <div id="profs" role="list"></div>
-  <button class="sideBtn add" id="addProf" title="Thêm hồ sơ" aria-label="Thêm hồ sơ">+</button>
+<nav id="side" aria-label="Điều hướng">
+  <!-- 2.6.0: một nút Hồ sơ to; di chuột vào thì bảng hồ sơ trượt ra bên phải (#profFly) -->
+  <button class="sideBtn bigBtn" id="profBtn" aria-haspopup="true" aria-expanded="false" aria-controls="profFly" title="Hồ sơ"><span class="pbAva" id="profBtnAva"></span><span class="cnt hidden" id="profCnt"></span><span class="lbl">Hồ sơ</span></button>
+  <button class="sideBtn bigBtn" id="projBtn" title="Quản lý dự án" aria-label="Quản lý dự án"><span class="pbIc">📋</span><span class="cnt hidden" id="projCnt"></span><span class="lbl">Dự án</span></button>
   <div class="grow"></div>
   <button class="sideBtn" id="feedBtn" title="Tin mới (tất cả hồ sơ)" aria-label="Tin mới">🔔<span class="cnt hidden" id="feedCnt"></span></button>
   <button class="sideBtn" id="setBtn" title="Cài đặt" aria-label="Cài đặt">⚙️<span class="cnt dot hidden" id="updDot" title="Có bản cập nhật">↑</span></button>
 </nav>
+<div id="profFly" class="fly hidden" role="dialog" aria-label="Danh sách hồ sơ">
+  <div class="flyHead">Hồ sơ <span class="mute small">· Ctrl+1…9</span></div>
+  <div id="profs" role="list"></div>
+  <button class="flyAdd" id="addProf" title="Thêm hồ sơ">＋ Thêm hồ sơ</button>
+</div>
 <aside id="tabcol" class="hidden" aria-label="Tab của hồ sơ">
   <div class="tcHead"><div class="tcAva" id="tcAva" role="img"></div></div>
   <div class="vtabs" id="tabs" role="tablist" aria-orientation="vertical" aria-label="Tab">
@@ -41,6 +47,7 @@
   <section id="pGit" class="panel hidden"></section>
   <section id="pFeed" class="panel hidden"></section>
   <section id="pSet" class="panel hidden"></section>
+  <section id="pProj" class="panel hidden"></section>
   <section id="pEmpty" class="panel hidden">
     <div class="empty">
       <img class="brandLogo" src="logo.svg" alt="" width="112" height="112">

@@ -1,6 +1,12 @@
-## Tom Multitask 2.5 (trước đây là MetaTools)
+## Tom Multitask 2.6 (trước đây là MetaTools)
 
-**Mới ở bản 2.5.0:**
+**Mới ở bản 2.6.0:**
+- **Tab Discord cho mỗi hồ sơ:** đăng nhập Discord riêng từng hồ sơ, chạy nền vẫn nhận tin, số tin chưa đọc cộng vào icon app. Sửa hồ sơ → ô Discord để mở sẵn một server/kênh. Link discord.gg / discord.com bấm từ tab khác tự mở vào tab Discord của đúng hồ sơ.
+- **Nút Hồ sơ gọn:** cột trái chỉ còn nút Hồ sơ (ảnh hồ sơ đang mở + tổng tin chưa đọc), Dự án, Tin mới, Cài đặt. Di chuột vào Hồ sơ là bảng danh sách hồ sơ trượt ra bên phải. Phím tắt **Ctrl/Cmd + 1…9** chuyển nhanh hồ sơ.
+- **Quản lý dự án:** thẻ dự án có trạng thái, hạn chót (trễ đỏ, sắp tới hạn vàng), người phụ trách, tiến độ %, checklist việc, ghi chú, link tài liệu, gắn với nhiều hồ sơ và nút mở nhanh Slack / Trello / Discord / Git của từng hồ sơ.
+- **Đồng bộ dự án giữa các máy:** dự án lưu thành `projects.json` trong một repo Git riêng (nên private). Bấm **⟳ Đồng bộ** để kéo bản mới, gộp với máy này rồi đẩy lên; bấm ⚙ để chọn repo + nick Git. Hai máy sửa cùng dự án thì bản sửa sau cùng được giữ; dự án đã xoá không bị hồi sinh.
+
+**Bản 2.5.0:**
 - **Đổi tên thành Tom Multitask**, có logo mới (chồng cửa sổ trên nền cam–hồng) cho icon app, khay hệ thống và thông báo.
 - **Giao diện đồng bộ với logo:** màu nhấn đổi từ tím sang cam–hồng, nút chính dùng dải màu của logo, màn hình chào và mục Cài đặt có logo.
 - **Dữ liệu giữ nguyên:** hồ sơ, phiên đăng nhập và token vẫn nằm trong thư mục cũ `MetaTools`, nên không phải đăng nhập lại.

@@ -8,6 +8,7 @@ const Store = require('./lib/store');
 const G = require('./lib/git');
 const { translate } = require('./lib/translate');
 const U = require('./lib/updater');
+const PS = require('./lib/projsync');
 
 const SIDEBAR = 76;        // profile column
 const TABCOL = 64;        // vertical tab column of the selected profile (always shown next to a web view)
@@ -32,7 +33,7 @@ const views = {};          // profileId -> { slack: WebContentsView, google: Web
 const unread = {};         // profileId -> number | '•'
 const events = [];         // notification feed
 let evSeq = 0;
-let current = { profileId: null, tab: 'slack', overlay: false };
+let current = { profileId: null, tab: 'slack', overlay: false, peek: 0 };   // peek: bảng hồ sơ đang trượt ra → đẩy web view sang phải
 const gitStatus = {};      // accId -> {ok, who, expires, msg, at}
 const prepared = {};       // pairId -> prepare result
 let task = null;           // { id, title, lines: [], done, ok }
@@ -97,7 +98,7 @@ function sendUI(ch, data) { if (win && !win.isDestroyed()) win.webContents.send(
 
 function contentBounds() {
   const [w, h] = win.getContentSize();
-  const left = SIDEBAR + TABCOL;
+  const left = SIDEBAR + TABCOL + (current.peek || 0);
   return { x: left, y: TOPBAR, width: Math.max(100, w - left), height: Math.max(100, h - TOPBAR) };
 }
 
@@ -318,7 +319,7 @@ function refreshBadge() {
     win.setOverlayIcon(total || dot ? nativeImage.createFromPath(iconPath('badge.png')) : null, total ? `${total} tin chưa đọc` : '');
   }
   if (tray) { tray.setToolTip(total ? `${APP_NAME}: ${total} tin chưa đọc` : APP_NAME); updateTrayMenu(); }
-  sendUI('ui:badges', { unread, news: Object.fromEntries(store.cfg.profiles.map((p) => [p.id, newCount(p.id)])) });
+  sendUI('ui:badges', { unread, unreadDiscord, news: Object.fromEntries(store.cfg.profiles.map((p) => [p.id, newCount(p.id)])) });
 }
 
 function notify(title, body, onClick) {
@@ -406,7 +407,7 @@ function cleanSlackUrl(u) {
 function publicState() {
   return {
     version: BOOT.version, shellVersion: BOOT.shellVersion, platform: process.platform,
-    profiles: store.cfg.profiles, current, unread,
+    profiles: store.cfg.profiles, projects: store.cfg.projects, projSync: store.cfg.projSync, current, unread, unreadDiscord,
     news: Object.fromEntries(store.cfg.profiles.map((p) => [p.id, newCount(p.id)])),
     settings: { openAtLogin: app.getLoginItemSettings().openAtLogin, autoUpdate: store.cfg.settings.autoUpdate !== false },
     update: updPublic(),
@@ -425,6 +426,45 @@ const handlers = {
     }
     layout(!!a.focus && win && win.isFocused());
     return true;
+  },
+  // bảng hồ sơ (di chuột vào nút Hồ sơ) trượt ra bên phải cột trái: web view là lớp gốc nằm trên HTML nên phải nhường chỗ
+  'app:peek': (a) => { const w = Math.max(0, Math.min(420, (a && a.w) | 0)); if (current.peek !== w) { current.peek = w; layout(); } return true; },
+  // ---- dự án (2.6.0)
+  'proj:save': (a) => {
+    const d = a || {};
+    const name = String(d.name || '').trim();
+    if (!name) throw new Error('Đặt tên cho dự án.');
+    const STATUS = ['doing', 'waiting', 'done', 'paused'];
+    const due = String(d.due || '').trim();
+    if (due && !/^\d{4}-\d{2}-\d{2}$/.test(due)) throw new Error('Hạn chót dạng năm-tháng-ngày.');
+    const ids = new Set(store.cfg.profiles.map((p) => p.id));
+    const tasks = (Array.isArray(d.tasks) ? d.tasks : []).filter((t) => t && String(t.text || '').trim()).slice(0, 200)
+      .map((t) => ({ id: t.id || Store.id(), text: String(t.text).trim().slice(0, 300), done: !!t.done }));
+    const vals = {
+      name: name.slice(0, 120), status: STATUS.includes(d.status) ? d.status : 'doing', due, owner: String(d.owner || '').trim().slice(0, 80),
+      progress: Math.max(0, Math.min(100, Math.round(Number(d.progress) || 0))), note: String(d.note || '').slice(0, 4000),
+      link: String(d.link || '').trim().slice(0, 500), profileIds: (Array.isArray(d.profileIds) ? d.profileIds : []).filter((x) => ids.has(x)), tasks, updatedAt: Date.now(),
+    };
+    let pr = d.id && store.cfg.projects.find((x) => x.id === d.id);
+    if (pr) Object.assign(pr, vals); else { pr = { id: Store.id(), ...vals, createdAt: Date.now() }; store.cfg.projects.push(pr); }
+    store.save(); return pr;
+  },
+  'proj:delete': (a) => { const n = store.cfg.projects.length; store.cfg.projects = store.cfg.projects.filter((x) => x.id !== (a && a.id)); if (a && a.id) store.cfg.projTomb[a.id] = Date.now(); store.save(); return n !== store.cfg.projects.length; },
+  'proj:syncCfg': (a) => {
+    const acc = store.cfg.gitAccounts.find((x) => x.id === (a && a.accId));
+    if (!acc) throw new Error('Chọn nick Git dùng để đồng bộ (tạo nick ở tab Git nếu chưa có).');
+    const url = G.normUrl(String(a.url || ''), acc); const branch = String(a.branch || 'main').trim() || 'main';
+    if (!/^[\w./-]+$/.test(branch)) throw new Error('Tên nhánh không hợp lệ.');
+    store.cfg.projSync = { ...store.cfg.projSync, accId: acc.id, url, branch }; store.save(); return store.cfg.projSync;
+  },
+  'proj:sync': async () => {
+    const c = store.cfg.projSync || {};
+    const acc = store.cfg.gitAccounts.find((x) => x.id === c.accId);
+    if (!acc || !c.url) throw new Error('Chưa cài đặt đồng bộ: bấm ⚙ cạnh nút Đồng bộ để chọn repo + nick Git.');
+    const r = await PS.sync({ acc, token: store.getToken(acc.id), url: c.url, branch: c.branch, workDir: path.join(app.getPath('userData'), 'proj-sync'), device: require('os').hostname() },
+      { projects: store.cfg.projects, tombstones: store.cfg.projTomb });
+    store.cfg.projects = r.projects; store.cfg.projTomb = r.tombstones; store.cfg.projSync = { ...c, lastSync: Date.now() }; store.save();
+    return { count: r.projects.length, pushed: r.pushed, lastSync: store.cfg.projSync.lastSync };
   },
   'app:nav': (a) => {
     const p = profile(a.profileId); if (!p) return false;
@@ -464,6 +504,7 @@ const handlers = {
     destroyViews(p.id);
     if (a.wipe) await session.fromPartition(partitionOf(p)).clearStorageData();
     store.cfg.profiles = store.cfg.profiles.filter((x) => x.id !== p.id);
+    store.cfg.projects.forEach((pr) => { pr.profileIds = (pr.profileIds || []).filter((x) => x !== p.id); });
     store.cfg.gitAccounts.forEach((g) => { if (g.profileId === p.id) g.profileId = null; });
     store.cfg.pairs.forEach((x) => { if (x.profileId === p.id) x.profileId = null; });
     delete unread[p.id]; delete unreadDiscord[p.id];

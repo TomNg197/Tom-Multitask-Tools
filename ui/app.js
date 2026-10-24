@@ -8,7 +8,7 @@ const COLORS = ['#7c4dff', '#e91e63', '#ff7043', '#f9a825', '#43a047', '#00897b'
 let S = null;            // app state
 let GS = null;           // git state
 let cur = { profileId: null, tab: 'slack' };
-let panel = 'web';       // web | git | feed | settings | empty
+let panel = 'web';       // web | git | feed | settings | projects | empty
 let lastPrepare = null;
 let logId = null;
 
@@ -58,10 +58,15 @@ async function refresh() {
   render();
 }
 
+function unreadOf(pid) {
+  const u = S.unread[pid]; const ud = (S.unreadDiscord || {})[pid];
+  const n = Math.max(typeof u === 'number' ? u : 0, S.news[pid] || 0) + (typeof ud === 'number' ? ud : 0);
+  return { n, dot: !n && (u === '•' || ud === '•') };
+}
 function badgeOf(pid) {
-  const u = S.unread[pid]; const n = Math.max(typeof u === 'number' ? u : 0, S.news[pid] || 0);
+  const { n, dot } = unreadOf(pid);
   if (n) return `<span class="cnt">${n > 99 ? '99+' : n}</span>`;
-  if (u === '•') return '<span class="cnt dot">•</span>';
+  if (dot) return '<span class="cnt dot">•</span>';
   return '';
 }
 
@@ -69,16 +74,25 @@ const TAB_NAMES = { slack: 'Slack', google: 'Drive / Gmail', trello: 'Trello', d
 
 function render() {
   const focusedBub = document.activeElement && document.activeElement.classList.contains('bub') ? document.activeElement.dataset.id : null;
-  $('profs').innerHTML = S.profiles.map((p) => { const on = p.id === cur.profileId && panel !== 'feed' && panel !== 'settings';
-    return `<div class="bub ${on ? 'on' : ''}" role="button" tabindex="0" aria-current="${on ? 'true' : 'false'}" aria-label="${esc(p.name)}" data-id="${p.id}" style="background:${p.logo ? 'var(--card)' : esc(p.color)}" title="${esc(p.name)}">${avatarHtml(p)}${badgeOf(p.id)}</div>`; }).join('');
+  // 2.6.0: hồ sơ nằm trong bảng trượt (#profFly); mỗi dòng = ảnh/chữ tắt + tên + số tin chưa đọc
+  $('profs').innerHTML = S.profiles.map((p, i) => { const on = p.id === cur.profileId && (panel === 'web' || panel === 'git');
+    return `<div class="bub ${on ? 'on' : ''}" role="button" tabindex="0" aria-current="${on ? 'true' : 'false'}" aria-label="${esc(p.name)}" data-id="${p.id}" title="${esc(p.name)}${i < 9 ? ' · Ctrl+' + (i + 1) : ''}"><span class="bAva" style="background:${p.logo ? 'var(--card)' : esc(p.color)}">${avatarHtml(p)}</span><span class="bName">${esc(p.name)}</span>${badgeOf(p.id)}</div>`; }).join('');
+  { const cp = prof(cur.profileId); const a = $('profBtnAva');
+    if (cp) { setAvatar(a, cp); a.classList.remove('empty'); } else { a.innerHTML = '＋'; a.style.background = ''; a.classList.add('empty'); }
+    let tn = 0, td = false; S.profiles.forEach((x) => { const u = unreadOf(x.id); tn += u.n; td = td || u.dot; });
+    $('profCnt').textContent = tn ? (tn > 99 ? '99+' : tn) : '•'; $('profCnt').classList.toggle('hidden', !tn && !td); $('profCnt').classList.toggle('dot', !tn && td);
+    $('profBtn').classList.toggle('on', panel === 'web' || panel === 'git' || panel === 'empty');
+    $('projBtn').classList.toggle('on', panel === 'projects');
+    const late = (S.projects || []).filter((x) => x.status !== 'done' && dueState(x.due) !== '').length;
+    $('projCnt').textContent = late; $('projCnt').classList.toggle('hidden', !late); $('projCnt').title = late ? `${late} dự án quá hạn / sắp tới hạn` : ''; }
   if (focusedBub) { const b = document.querySelector(`.bub[data-id="${focusedBub}"]`); if (b) b.focus(); }   // keyboard users keep their place
   const totalNew = Object.values(S.news).reduce((a, b) => a + b, 0);
   $('feedCnt').textContent = totalNew; $('feedCnt').classList.toggle('hidden', !totalNew);
   const p = prof(cur.profileId);
-  if (!p && panel !== 'settings' && panel !== 'feed') panel = 'empty';
+  if (!p && panel !== 'settings' && panel !== 'feed' && panel !== 'projects') panel = 'empty';
   else if (p && panel === 'empty') panel = cur.tab === 'git' ? 'git' : 'web';
   const showTabs = p && (panel === 'web' || panel === 'git');
-  $('pname').textContent = panel === 'feed' ? 'Tin mới' : panel === 'settings' ? 'Cài đặt' : showTabs ? `${p.name} · ${TAB_NAMES[cur.tab] || ''}` : (p ? p.name : 'Tom Multitask');
+  $('pname').textContent = panel === 'feed' ? 'Tin mới' : panel === 'settings' ? 'Cài đặt' : panel === 'projects' ? 'Quản lý dự án' : showTabs ? `${p.name} · ${TAB_NAMES[cur.tab] || ''}` : (p ? p.name : 'Tom Multitask');
   // profile column -> vertical tab column (only while a profile's tabs are shown) -> content
   $('tabcol').classList.toggle('hidden', !showTabs); document.body.classList.toggle('withTabs', !!showTabs);
   if (showTabs) { setAvatar($('tcAva'), p); $('tcAva').title = p.name; $('tcAva').setAttribute('aria-label', p.name); }   // icon-only column: name stays in the top bar + tooltip
@@ -87,10 +101,11 @@ function render() {
     const on = b.dataset.tab === cur.tab;
     b.classList.toggle('on', on); b.setAttribute('aria-selected', on ? 'true' : 'false'); b.tabIndex = on ? 0 : -1;
   });
-  for (const [id, k] of [['pWeb', 'web'], ['pGit', 'git'], ['pFeed', 'feed'], ['pSet', 'settings'], ['pEmpty', 'empty']]) $(id).classList.toggle('hidden', panel !== k);
+  for (const [id, k] of [['pWeb', 'web'], ['pGit', 'git'], ['pFeed', 'feed'], ['pSet', 'settings'], ['pProj', 'projects'], ['pEmpty', 'empty']]) $(id).classList.toggle('hidden', panel !== k);
   if (panel === 'git') renderGit();
   if (panel === 'feed') renderFeed();
   if (panel === 'settings') renderSettings();
+  if (panel === 'projects') renderProjects();
   updDot();
   syncMain();
 }
@@ -103,7 +118,7 @@ function syncMain() {
   markNext = false; focusNext = false;
 }
 
-function selectProfile(id, viaKey) { cur.profileId = id; panel = cur.tab === 'git' ? 'git' : 'web'; markNext = true; focusNext = !viaKey; render(); }
+function selectProfile(id, viaKey) { cur.profileId = id; panel = cur.tab === 'git' ? 'git' : 'web'; markNext = true; focusNext = !viaKey; closeFly(true); render(); }
 function selectTab(tab, viaKey) { cur.tab = tab; panel = tab === 'git' ? 'git' : 'web'; markNext = true; focusNext = !viaKey; render(); }
 
 // ------------------------------------------------------------------ modal helpers
@@ -396,10 +411,124 @@ function showTranslate(t) {
   }
 }
 
+// ------------------------------------------------------------------ bảng hồ sơ trượt (2.6.0)
+let flyTimer = null;
+function openFly() {
+  clearTimeout(flyTimer);
+  if (!$('profFly').classList.contains('hidden')) return;
+  $('profFly').classList.remove('hidden'); $('profBtn').setAttribute('aria-expanded', 'true');
+  mt.call('app:peek', { w: 280 });   // web view là lớp gốc nằm trên giao diện: đẩy nó sang phải để bảng không bị che
+}
+function closeFly(now) {
+  clearTimeout(flyTimer);
+  const go = () => { if ($('profFly').classList.contains('hidden')) return; $('profFly').classList.add('hidden'); $('profBtn').setAttribute('aria-expanded', 'false'); mt.call('app:peek', { w: 0 }); };
+  if (now) go(); else flyTimer = setTimeout(() => { if (!$('profFly').matches(':hover') && !$('profBtn').matches(':hover') && !$('profFly').contains(document.activeElement)) go(); }, 300);
+}
+
+// ------------------------------------------------------------------ quản lý dự án (2.6.0)
+const PJ_STATUS = { doing: 'Đang làm', waiting: 'Chờ', paused: 'Tạm dừng', done: 'Xong' };
+let pjFilter = 'open';
+function dueState(due) {
+  if (!due) return '';
+  const d = new Date(due + 'T23:59:59'); const days = Math.ceil((d - Date.now()) / 86400000);
+  return days < 0 ? 'late' : days <= 3 ? 'soon' : '';
+}
+function dueText(due) {
+  if (!due) return '';
+  const days = Math.ceil((new Date(due + 'T23:59:59') - Date.now()) / 86400000);
+  const [y, m, d] = due.split('-'); const s = `${d}/${m}/${y}`;
+  return days < 0 ? `${s} · trễ ${-days} ngày` : days === 0 ? `${s} · hôm nay` : days <= 3 ? `${s} · còn ${days} ngày` : s;
+}
+function miniAva(p) { return `<span title="${esc(p.name)}" style="background:${p.logo ? 'var(--card)' : esc(p.color)}">${p.logo ? `<img class="logo" src="${esc(p.logo)}" alt="">` : esc(initials(p.name))}</span>`; }
+function renderProjects() {
+  const all = (S.projects || []).slice().sort((a, b) => (a.status === 'done') - (b.status === 'done') || (a.due || '9999').localeCompare(b.due || '9999') || b.updatedAt - a.updatedAt);
+  const list = all.filter((x) => pjFilter === 'all' || (pjFilter === 'open' ? x.status !== 'done' : x.status === 'done'));
+  const cards = list.map((x) => {
+    const ds = x.status !== 'done' ? dueState(x.due) : ''; const tasks = x.tasks || []; const done = tasks.filter((t) => t.done).length;
+    const profs = (x.profileIds || []).map(prof).filter(Boolean);
+    return `<div class="pj" data-id="${x.id}" tabindex="0" role="button" aria-label="${esc(x.name)}">
+      <div class="row"><h4 class="grow">${esc(x.name)}</h4><span class="pchip ${x.status}">${PJ_STATUS[x.status] || ''}</span></div>
+      <div class="mute small">${x.owner ? '👤 ' + esc(x.owner) + ' · ' : ''}${x.due ? `<span class="pchip ${ds === 'late' ? 'late' : ds === 'soon' ? 'waiting' : ''}">📅 ${esc(dueText(x.due))}</span>` : 'Chưa đặt hạn'}</div>
+      <div class="pbar" title="${x.progress}%"><i style="width:${x.progress}%"></i></div>
+      <div class="row small mute"><span>${x.progress}%${tasks.length ? ` · ${done}/${tasks.length} việc` : ''}</span><span class="grow"></span><div class="pjAvas">${profs.map(miniAva).join('')}</div></div>
+    </div>`; }).join('');
+  $('pProj').innerHTML = `<div class="pjHead"><h2 style="margin:0" class="grow">Dự án</h2>
+    ${seg('pj_filter', [['open', 'Đang theo dõi'], ['done', 'Đã xong'], ['all', 'Tất cả']], pjFilter)}
+    <span class="mute small" id="pj_last">${S.projSync && S.projSync.lastSync ? 'Đồng bộ lúc ' + new Date(S.projSync.lastSync).toLocaleString('vi-VN') : S.projSync && S.projSync.url ? 'Chưa đồng bộ lần nào' : 'Chỉ lưu trên máy này'}</span>
+    <button id="pj_sync" title="Kéo bản mới từ repo, gộp với máy này rồi đẩy lên">⟳ Đồng bộ</button><button class="ghost" id="pj_scfg" title="Cài đặt đồng bộ (repo + nick Git)" aria-label="Cài đặt đồng bộ">⚙</button>
+    <button class="pri" id="pj_new">＋ Dự án mới</button></div>
+    ${cards ? `<div class="pjGrid">${cards}</div>` : `<div class="empty"><p class="mute">${all.length ? 'Không có dự án nào trong mục này.' : 'Chưa có dự án. Tạo dự án và gắn với hồ sơ để mở nhanh Slack / Trello / Discord / Git của dự án.'}</p></div>`}`;
+  $('pj_new').onclick = () => projectForm(null);
+  $('pj_scfg').onclick = () => syncForm();
+  $('pj_sync').onclick = async () => {
+    if (!S.projSync || !S.projSync.url) return syncForm();
+    const b = $('pj_sync'); b.disabled = true; b.textContent = '⟳ Đang đồng bộ…';
+    try { const r = await call('proj:sync'); toast(`Đã đồng bộ ${r.count} dự án${r.pushed ? ' (đã đẩy lên)' : ''} ✓`); await refresh(); }
+    catch (_) { /* call() đã báo lỗi */ } finally { if ($('pj_sync')) { $('pj_sync').disabled = false; $('pj_sync').textContent = '⟳ Đồng bộ'; } }
+  };
+  $('pj_filter').addEventListener('change', () => { pjFilter = segVal('pj_filter'); renderProjects(); });
+  document.querySelectorAll('#pProj .pj').forEach((c) => {
+    const open = () => projectForm((S.projects || []).find((x) => x.id === c.dataset.id));
+    c.onclick = open; c.onkeydown = (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); } };
+  });
+}
+async function syncForm() {
+  GS = await call('git:state');
+  const c = S.projSync || {};
+  const accs = GS.accounts.map((a) => `<option value="${a.id}" ${a.id === c.accId ? 'selected' : ''}>${esc(a.label)} (${esc(a.host)} / ${esc(a.user)})</option>`).join('');
+  openModal(`<h3>Đồng bộ dự án giữa các máy</h3>
+  <div class="mute small">Dự án được lưu thành file <b>projects.json</b> trong một repo Git riêng (nên để <b>private</b>). Máy nào cùng trỏ vào repo này, bấm Đồng bộ là thấy giống nhau. Hai máy sửa cùng một dự án thì bản sửa sau cùng được giữ.</div>
+  <label>Nick Git dùng để đọc / ghi repo</label><select id="s_acc"><option value="">— chọn —</option>${accs}</select>
+  ${GS.accounts.length ? '' : '<div class="warnbox small">Chưa có nick Git nào. Vào một hồ sơ → tab Git để thêm nick (token hoặc SSH key) trước.</div>'}
+  <label>Repo (tạo sẵn một repo trống, private)</label><input id="s_url" value="${esc(c.url || '')}" placeholder="https://github.com/ten/tom-projects">
+  <label>Nhánh</label><input id="s_branch" value="${esc(c.branch || 'main')}">
+  <div class="row" style="margin-top:16px"><span class="grow"></span><button id="s_cancel">Huỷ</button><button class="pri" id="s_save">Lưu & đồng bộ ngay</button></div>`);
+  $('s_cancel').onclick = closeModal;
+  $('s_save').onclick = async () => {
+    await call('proj:syncCfg', { accId: $('s_acc').value, url: $('s_url').value, branch: $('s_branch').value });
+    closeModal(); await refresh();
+    try { const r = await call('proj:sync'); toast(`Đã đồng bộ ${r.count} dự án ✓`); await refresh(); } catch (_) { /* đã báo */ }
+  };
+}
+function projectForm(x) {
+  x = x || { status: 'doing', progress: 0, profileIds: cur.profileId ? [cur.profileId] : [], tasks: [] };
+  let tasks = (x.tasks || []).map((t) => ({ ...t }));
+  const tHtml = () => tasks.map((t, i) => `<div class="titem ${t.done ? 'done' : ''}"><input type="checkbox" data-i="${i}" ${t.done ? 'checked' : ''}><span class="t">${esc(t.text)}</span><button class="sm ghost" data-del="${i}" title="Xoá việc">✕</button></div>`).join('');
+  const linked = (x.profileIds || []).map(prof).filter(Boolean);
+  openModal(`<h3>${x.id ? 'Sửa dự án' : 'Dự án mới'}</h3>
+  <label>Tên dự án</label><input id="j_name" value="${esc(x.name || '')}" placeholder="Ride a Pet · bản 1.2">
+  <label>Trạng thái</label>${seg('j_status', Object.entries(PJ_STATUS), x.status)}
+  <div class="row" style="gap:10px"><div class="grow"><label>Hạn chót</label><input type="date" id="j_due" value="${esc(x.due || '')}"></div>
+  <div class="grow"><label>Người phụ trách</label><input id="j_owner" value="${esc(x.owner || '')}" placeholder="Tên"></div></div>
+  <label>Tiến độ: <b id="j_pv">${x.progress || 0}%</b></label><input type="range" id="j_prog" min="0" max="100" step="5" value="${x.progress || 0}">
+  <label>Gắn với hồ sơ</label><div class="pchk">${S.profiles.map((p) => `<label><input type="checkbox" class="j_prof" value="${p.id}" ${(x.profileIds || []).includes(p.id) ? 'checked' : ''}>${esc(p.name)}</label>`).join('') || '<span class="mute small">Chưa có hồ sơ nào.</span>'}</div>
+  ${linked.length ? `<label>Mở nhanh</label><div class="plinks">${linked.map((p) => ['slack', 'trello', 'discord', 'git'].map((k) => `<button class="sm" data-go="${p.id}|${k}">${esc(p.name)} · ${TAB_NAMES[k]}</button>`).join('')).join('')}</div>` : ''}
+  <label>Link tài liệu (tuỳ chọn)</label><input id="j_link" value="${esc(x.link || '')}" placeholder="https://… (GDD, sheet, board)">
+  <label>Việc cần làm</label><div class="tlist" id="j_tasks">${tHtml()}</div>
+  <div class="row" style="margin-top:6px"><input id="j_newt" placeholder="Thêm việc rồi Enter"><button id="j_addt">Thêm</button></div>
+  <label>Ghi chú</label><textarea id="j_note" rows="3">${esc(x.note || '')}</textarea>
+  <div class="row" style="margin-top:16px">${x.id ? '<button class="err" id="j_del">Xoá dự án</button>' : ''}${x.link ? '<button class="ghost" id="j_open">Mở link ↗</button>' : ''}<span class="grow"></span><button id="j_cancel">Huỷ</button><button class="pri" id="j_save">Lưu</button></div>`);
+  const redrawTasks = () => { $('j_tasks').innerHTML = tHtml(); };
+  $('j_tasks').addEventListener('change', (e) => { const i = e.target.dataset.i; if (i != null) { tasks[i].done = e.target.checked; redrawTasks(); } });
+  $('j_tasks').addEventListener('click', (e) => { const i = e.target.dataset.del; if (i != null) { tasks.splice(+i, 1); redrawTasks(); } });
+  const addT = () => { const v = $('j_newt').value.trim(); if (!v) return; tasks.push({ text: v, done: false }); $('j_newt').value = ''; redrawTasks(); $('j_newt').focus(); };
+  $('j_addt').onclick = addT; $('j_newt').onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); addT(); } };
+  $('j_prog').oninput = () => { $('j_pv').textContent = $('j_prog').value + '%'; };
+  document.querySelectorAll('#modalBox [data-go]').forEach((b) => { b.onclick = () => { const [pid, k] = b.dataset.go.split('|'); closeModal(); cur.profileId = pid; selectTab(k); }; });
+  if ($('j_open')) $('j_open').onclick = () => mt.call('app:openExternal', { url: x.link });
+  $('j_cancel').onclick = closeModal;
+  $('j_save').onclick = async () => {
+    await call('proj:save', { id: x.id, name: $('j_name').value, status: segVal('j_status'), due: $('j_due').value, owner: $('j_owner').value, progress: +$('j_prog').value,
+      profileIds: [...document.querySelectorAll('.j_prof:checked')].map((c) => c.value), link: $('j_link').value, note: $('j_note').value, tasks });
+    closeModal(); await refresh(); toast('Đã lưu dự án');
+  };
+  if (x.id) $('j_del').onclick = async () => { if (!confirm(`Xoá dự án "${x.name}"?`)) return; await call('proj:delete', { id: x.id }); closeModal(); await refresh(); };
+}
+
 // ------------------------------------------------------------------ events from main
 mt.on('ui:select', (id) => { cur.profileId = id; if (panel !== 'git') panel = 'web'; refresh(); });
 mt.on('ui:tab', (t) => { cur.tab = t; panel = t === 'git' ? 'git' : 'web'; render(); });
-mt.on('ui:badges', (b) => { if (!S) return; S.unread = b.unread; S.news = b.news; render(); });
+mt.on('ui:badges', (b) => { if (!S) return; S.unread = b.unread; S.unreadDiscord = b.unreadDiscord || {}; S.news = b.news; render(); });
 mt.on('ui:event', () => { if (panel === 'feed') renderFeed(); });
 mt.on('ui:viewState', (v) => { if (v.profileId === cur.profileId) $('webHint').textContent = 'Đang tải…'; });
 mt.on('git:task', (t) => { logId = t.id; const st = $('g_state'); if (st) { st.className = 'badge'; st.textContent = 'đang chạy…'; } });
@@ -445,6 +574,18 @@ $('addProf').onclick = () => profileForm(null);
 $('emptyAdd').onclick = () => profileForm(null);
 $('editProf').onclick = () => profileForm(prof(cur.profileId));
 $('feedBtn').onclick = () => { panel = 'feed'; render(); };
+$('projBtn').onclick = () => { closeFly(true); panel = 'projects'; render(); };
+// bảng hồ sơ: di chuột vào nút Hồ sơ thì mở, rời cả nút lẫn bảng 0,3 s thì đóng; bấm nút để mở/đóng (bàn phím, màn cảm ứng)
+$('profBtn').addEventListener('mouseenter', () => openFly());
+$('profBtn').addEventListener('mouseleave', () => closeFly());
+$('profFly').addEventListener('mouseenter', () => clearTimeout(flyTimer));
+$('profFly').addEventListener('mouseleave', () => closeFly());
+$('profBtn').onclick = () => { if ($('profFly').classList.contains('hidden')) { openFly(); const f = document.querySelector('#profs .bub.on') || document.querySelector('#profs .bub'); if (f) f.focus(); } else closeFly(true); };
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && !$('profFly').classList.contains('hidden')) { closeFly(true); $('profBtn').focus(); }
+  // Ctrl/Cmd + 1…9: chuyển nhanh sang hồ sơ thứ n
+  if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && /^[1-9]$/.test(e.key) && S) { const p = S.profiles[+e.key - 1]; if (p) { e.preventDefault(); selectProfile(p.id, true); } }
+});
 $('setBtn').onclick = () => { panel = 'settings'; render(); };
 document.querySelectorAll('#tabs button').forEach((b) => { b.onclick = () => selectTab(b.dataset.tab); });
 document.querySelectorAll('#navs button').forEach((b) => { b.onclick = () => mt.call('app:nav', { profileId: cur.profileId, kind: cur.tab, action: b.dataset.nav }); });

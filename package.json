@@ -2,7 +2,7 @@
   "name": "metatools",
   "productName": "MetaTools",
   "displayName": "Tom Multitask",
-  "version": "2.5.0",
+  "version": "2.6.0",
   "description": "Nhi\u1ec1u t\u00e0i kho\u1ea3n Slack + Drive/Gmail + c\u1eb7p Git trong m\u1ed9t app",
   "main": "bootstrap.js",
   "updateMinShell": "2.3.0",
@@ -10,7 +10,7 @@
   "license": "UNLICENSED",
   "scripts": {
     "start": "electron .",
-    "test": "node test/git.test.js && node test/update.test.js"
+    "test": "node test/git.test.js && node test/update.test.js && node test/projsync.test.js"
   },
   "devDependencies": {
     "@electron/packager": "^18.4.4",
