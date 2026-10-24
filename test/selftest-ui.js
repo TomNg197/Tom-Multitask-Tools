@@ -35,7 +35,7 @@ module.exports = async function selftestUi(ctx) {
       vertical: document.getElementById('tabs').getAttribute('aria-orientation'),
       stacked: (() => { const r = [...document.querySelectorAll('#tabs button')].map((b) => b.getBoundingClientRect()); return r.every((x, i) => !i || x.top > r[i - 1].top && x.left === r[0].left); })() })`));
     chk('vertical tab column shown next to the profile column', lay.tc && lay.vertical === 'vertical' && lay.stacked, JSON.stringify(lay));
-    chk('tabs: Slack selected, 4 tabs', lay.tabs.join(',') === 'slack:true,google:false,trello:false,git:false', lay.tabs.join(','));
+    chk('tabs: Slack selected, 5 tabs', lay.tabs.join(',') === 'slack:true,google:false,trello:false,discord:false,git:false', lay.tabs.join(','));
     const v = ctx.views[p1.id] && ctx.views[p1.id].slack;
     chk('web view starts right after the tab column', v && v.getBounds().x === Math.round(lay.tcR) && Math.round(lay.topL) === v.getBounds().x, JSON.stringify(v && v.getBounds()) + ' tcR=' + lay.tcR);
     let txt = '';   // wait until Slack's sign-in page has drawn (network)

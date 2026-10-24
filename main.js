@@ -126,14 +126,16 @@ function layout(focusView) {
 function profile(id) { return store.cfg.profiles.find((p) => p.id === id); }
 function partitionOf(p) { return `persist:p-${p.id}`; }
 
-const WEB_KINDS = ['slack', 'google', 'trello'];
+const WEB_KINDS = ['slack', 'google', 'trello', 'discord'];
 const TRELLO_RE = /^https:\/\/([a-z0-9-]+\.)*(trello\.com|trellocdn\.com)\//i;
+const DISCORD_RE = /^https:\/\/([a-z0-9-]+\.)*(discord\.com|discordapp\.com|discord\.gg|discordapp\.net|discord\.media)\//i;
 const LOGIN_RE = /^https:\/\/(accounts\.google\.com|id\.atlassian\.com|appleid\.apple\.com|login\.microsoftonline\.com)\//i;
 const GOOGLE_RE = /^https:\/\/([a-z0-9-]+\.)*(google\.com|googleusercontent\.com|gstatic\.com)\//i;
 const SLACK_RE = /^https:\/\/([a-z0-9-]+\.)*(slack\.com|slack-edge\.com|slack-files\.com|slack-redir\.net)\//i;
 
 function trelloHome(p) { return p.trelloUrl || 'https://trello.com/'; }
-function homeOf(p, kind) { return kind === 'slack' ? (p.slackUrl || 'https://app.slack.com/client') : kind === 'trello' ? trelloHome(p) : googleHome(p); }
+function discordHome(p) { return p.discordUrl || 'https://discord.com/app'; }
+function homeOf(p, kind) { return kind === 'slack' ? (p.slackUrl || 'https://app.slack.com/client') : kind === 'trello' ? trelloHome(p) : kind === 'discord' ? discordHome(p) : googleHome(p); }
 
 function googleHome(p) {
   return p.gmail ? `https://drive.google.com/drive/my-drive?authuser=${encodeURIComponent(p.gmail)}` : 'https://drive.google.com/drive/my-drive';
@@ -168,7 +170,7 @@ function ensureView(p, kind) {
   const v = new WebContentsView({
     webPreferences: {
       partition: partitionOf(p), contextIsolation: true, nodeIntegration: false, sandbox: true,
-      backgroundThrottling: kind !== 'slack',   // Slack keeps receiving while hidden / in the tray
+      backgroundThrottling: kind !== 'slack' && kind !== 'discord',   // Slack / Discord keep receiving while hidden / in the tray
       preload: kind === 'slack' ? path.join(__dirname, 'preload-slack.js') : undefined,
     },
   });
@@ -176,7 +178,7 @@ function ensureView(p, kind) {
   wc.__mtProfile = p.id;
   wc.__mtKind = kind;
   wc.setWindowOpenHandler(({ url }) => routeLink(p, url, kind));
-  wc.on('page-title-updated', (e, title) => { if (kind === 'slack') setUnread(p.id, parseUnread(title)); });
+  wc.on('page-title-updated', (e, title) => { if (kind === 'slack') setUnread(p.id, parseUnread(title)); else if (kind === 'discord') setUnreadDiscord(p.id, parseUnread(title)); });
   wc.on('did-finish-load', () => sendUI('ui:viewState', { profileId: p.id, kind, url: wc.getURL(), title: wc.getTitle() }));
   wc.on('did-navigate', () => sendUI('ui:viewState', { profileId: p.id, kind, url: wc.getURL(), title: wc.getTitle() }));
   wc.on('context-menu', (e, params) => contextMenu(p, wc, params));
@@ -214,6 +216,11 @@ function routeLink(p, url, fromKind) {
   if (TRELLO_RE.test(url)) {
     if (fromKind === 'trello') return popupInProfile(p);
     return openInTab(p, 'trello', url);
+  }
+  if (DISCORD_RE.test(url)) {
+    // trong Discord: cửa sổ phụ (đăng nhập, gọi video) dùng chung phiên; từ tab khác: mở vào tab Discord của hồ sơ này
+    if (fromKind === 'discord') return popupInProfile(p);
+    return openInTab(p, 'discord', url);
   }
   if (GOOGLE_RE.test(url)) {
     const g = ensureView(p, 'google');
@@ -284,6 +291,13 @@ function parseUnread(title) {
   return n ? parseInt(n, 10) : '•';
 }
 
+const unreadDiscord = {};   // profileId -> number | '•' (tiêu đề Discord dạng "(3) Discord | ...")
+function setUnreadDiscord(pid, val) {
+  if (unreadDiscord[pid] === val) return;
+  unreadDiscord[pid] = val;
+  refreshBadge();
+}
+
 function setUnread(pid, val) {
   if (unread[pid] === val) return;
   unread[pid] = val;
@@ -295,9 +309,9 @@ function newCount(pid) { return events.filter((e) => e.p === pid && !e.read).len
 function refreshBadge() {
   let total = 0; let dot = false;
   for (const p of store.cfg.profiles) {
-    const u = unread[p.id];
-    const n = Math.max(typeof u === 'number' ? u : 0, newCount(p.id));
-    total += n; if (u === '•') dot = true;
+    const u = unread[p.id]; const ud = unreadDiscord[p.id];
+    const n = Math.max(typeof u === 'number' ? u : 0, newCount(p.id)) + (typeof ud === 'number' ? ud : 0);
+    total += n; if (u === '•' || ud === '•') dot = true;
   }
   if (IS_MAC || process.platform === 'linux') app.setBadgeCount(total);
   if (win && process.platform === 'win32') {
@@ -352,7 +366,7 @@ function createTray() {
 }
 
 // ------------------------------------------------------------------ IPC: app + profiles
-const PROFILE_FIELDS = ['name', 'color', 'slackUrl', 'gmail', 'trelloUrl', 'notify', 'logo'];
+const PROFILE_FIELDS = ['name', 'color', 'slackUrl', 'gmail', 'trelloUrl', 'discordUrl', 'notify', 'logo'];
 
 // profile logo: a small square picture the UI already cropped/resized (data URL). Anything else is dropped.
 const LOGO_MAX = 400 * 1024;
@@ -369,6 +383,15 @@ function cleanTrelloUrl(u) {
   if (!/^https?:\/\//.test(u)) u = 'https://' + u;
   u = u.replace(/^http:/, 'https:');
   if (!TRELLO_RE.test(u.endsWith('/') ? u : u + '/')) throw new Error('Địa chỉ Trello phải dạng https://trello.com/... (bảng hoặc workspace)');
+  return u;
+}
+
+function cleanDiscordUrl(u) {
+  u = (u || '').trim();
+  if (!u) return '';
+  if (!/^https?:\/\//.test(u)) u = 'https://' + u;
+  u = u.replace(/^http:/, 'https:');
+  if (!DISCORD_RE.test(u.endsWith('/') ? u : u + '/')) throw new Error('Địa chỉ Discord phải dạng https://discord.com/channels/... hoặc https://discord.gg/...');
   return u;
 }
 
@@ -418,14 +441,16 @@ const handlers = {
     if (!name) throw new Error('Đặt tên cho hồ sơ (ví dụ: Công ty, Khách A).');
     const gmail = String(d.gmail || '').trim();
     if (gmail && !/^[^@\s]+@[^@\s]+\.[a-z]{2,}$/i.test(gmail)) throw new Error('Gmail không hợp lệ.');
-    const vals = { name, color: d.color || '#7c4dff', slackUrl: cleanSlackUrl(d.slackUrl), gmail, trelloUrl: cleanTrelloUrl(d.trelloUrl), notify: d.notify !== false, logo: cleanLogo(d.logo) };
+    const vals = { name, color: d.color || '#7c4dff', slackUrl: cleanSlackUrl(d.slackUrl), gmail, trelloUrl: cleanTrelloUrl(d.trelloUrl), discordUrl: cleanDiscordUrl(d.discordUrl), notify: d.notify !== false, logo: cleanLogo(d.logo) };
     let p = d.id && profile(d.id);
     if (p) {
       const slackChanged = p.slackUrl !== vals.slackUrl;
       const trelloChanged = (p.trelloUrl || '') !== vals.trelloUrl;
+      const discordChanged = (p.discordUrl || '') !== vals.discordUrl;
       PROFILE_FIELDS.forEach((k) => { p[k] = vals[k]; });
       if (slackChanged && views[p.id] && views[p.id].slack) views[p.id].slack.webContents.loadURL(p.slackUrl || 'https://app.slack.com/client');
       if (trelloChanged && views[p.id] && views[p.id].trello) views[p.id].trello.webContents.loadURL(trelloHome(p));
+      if (discordChanged && views[p.id] && views[p.id].discord) views[p.id].discord.webContents.loadURL(discordHome(p));
     } else {
       p = { id: Store.id(), ...vals, createdAt: Date.now() };
       store.cfg.profiles.push(p);
@@ -441,7 +466,7 @@ const handlers = {
     store.cfg.profiles = store.cfg.profiles.filter((x) => x.id !== p.id);
     store.cfg.gitAccounts.forEach((g) => { if (g.profileId === p.id) g.profileId = null; });
     store.cfg.pairs.forEach((x) => { if (x.profileId === p.id) x.profileId = null; });
-    delete unread[p.id];
+    delete unread[p.id]; delete unreadDiscord[p.id];
     store.save(); updateTrayMenu(); refreshBadge();
     if (current.profileId === p.id) current = { ...current, profileId: null };
     layout();

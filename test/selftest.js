@@ -31,6 +31,8 @@ module.exports = async function selftest(ctx) {
     chk('reject non-slack url', bad);
     bad = false; try { await call('prof:save', { name: 'x', trelloUrl: 'https://evil.com/b/1' }); } catch (e) { bad = /Trello/.test(e.message); }
     chk('reject non-trello url', bad);
+    bad = false; try { await call('prof:save', { name: 'x', discordUrl: 'https://evil.com/channels/1' }); } catch (e) { bad = /Discord/.test(e.message); }
+    chk('reject non-discord url', bad);
     await ui('refresh()'); await wait(400);
     await ui(`selectProfile(${JSON.stringify(p1.id)})`);
     await wait(8000);
@@ -74,6 +76,20 @@ module.exports = async function selftest(ctx) {
     const tv = ctx.views[p2.id] && ctx.views[p2.id].trello;
     chk('trello view loaded', tv && /trello\.com|atlassian/.test(tv.webContents.getURL()), tv && tv.webContents.getURL());
     await shot('09_trello');
+    // discord tab + routing from slack (2.6.0)
+    await ui(`selectProfile(${JSON.stringify(p2.id)})`); await ui("selectTab('discord')"); await wait(6000);
+    const dv = ctx.views[p2.id] && ctx.views[p2.id].discord;
+    chk('discord view loaded', dv && /discord\.com/.test(dv.webContents.getURL()), dv && dv.webContents.getURL());
+    chk('discord view keeps running in background', dv && dv.webContents.backgroundThrottling === false);
+    await shot('09b_discord');
+    await ui("selectTab('slack')"); await wait(800);
+    await v2.webContents.executeJavaScript("window.open('https://discord.gg/abc123'); 1");
+    await wait(3000);
+    chk('discord link routed into profile discord tab', ctx.current().tab === 'discord' && /discord\.(com|gg)/.test(dv.webContents.getURL()), dv.webContents.getURL() + ' tab=' + ctx.current().tab);
+    const popd = ctx.routeLink(ctx.store.cfg.profiles.find((x) => x.id === p2.id), 'https://discord.com/oauth2/authorize?x=1', 'discord');
+    chk('discord popup from discord stays same session', popd.action === 'allow' && popd.overrideBrowserWindowOptions.webPreferences.partition === 'persist:p-' + p2.id);
+    const p2c = await call('prof:save', { id: p2.id, name: 'Khách A', slackUrl: 'https://app.slack.com/client', discordUrl: 'discord.com/channels/123/456', color: '#e91e63' });
+    chk('discord url saved + normalized', p2c.discordUrl === 'https://discord.com/channels/123/456', p2c.discordUrl);
     await ui("selectTab('slack')"); await wait(800);
     await v2.webContents.executeJavaScript("window.open('https://trello.com/b/abc123/test-board'); 1");
     await wait(3000);
@@ -82,6 +98,7 @@ module.exports = async function selftest(ctx) {
     chk('google sign-in from trello stays a same-session popup', pop.action === 'allow' && pop.overrideBrowserWindowOptions.webPreferences.partition === 'persist:p-' + p2.id);
     const p2b = await call('prof:save', { id: p2.id, name: 'Khách A', slackUrl: 'https://app.slack.com/client', trelloUrl: 'trello.com/w/khach-a', color: '#e91e63' });
     chk('trello url saved + normalized', p2b.trelloUrl === 'https://trello.com/w/khach-a', p2b.trelloUrl);
+
 
     // translation: select Vietnamese text in an editable box of the visible Slack view, Ctrl+Shift+E, replace
     await ui(`selectProfile(${JSON.stringify(p2.id)})`); await ui("selectTab('slack')"); await wait(1500);

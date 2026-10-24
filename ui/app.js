@@ -65,7 +65,7 @@ function badgeOf(pid) {
   return '';
 }
 
-const TAB_NAMES = { slack: 'Slack', google: 'Drive / Gmail', trello: 'Trello', git: 'Git' };
+const TAB_NAMES = { slack: 'Slack', google: 'Drive / Gmail', trello: 'Trello', discord: 'Discord', git: 'Git' };
 
 function render() {
   const focusedBub = document.activeElement && document.activeElement.classList.contains('bub') ? document.activeElement.dataset.id : null;
@@ -126,11 +126,12 @@ function seg(id, opts, val) { return `<div class="seg" id="${id}">${opts.map(([v
 function profileForm(p) {
   p = p || { color: COLORS[(S.profiles.length) % COLORS.length], notify: true };
   openModal(`<h3>${p.id ? 'Sửa hồ sơ' : 'Hồ sơ mới'}</h3>
-  <div class="mute small">Mỗi hồ sơ có phiên đăng nhập Slack, Google và Trello riêng, không lẫn với hồ sơ khác.</div>
+  <div class="mute small">Mỗi hồ sơ có phiên đăng nhập Slack, Google, Trello và Discord riêng, không lẫn với hồ sơ khác.</div>
   <label>Tên hồ sơ</label><input id="f_name" value="${esc(p.name || '')}" placeholder="Công ty / Khách A / Cá nhân">
   <label>Workspace Slack</label><input id="f_slack" value="${esc(p.slackUrl || '')}" placeholder="https://tencongty.slack.com (để trống = chọn khi đăng nhập)">
   <label>Gmail đi kèm (mở Drive/Docs đúng tài khoản)</label><input id="f_gmail" value="${esc(p.gmail || '')}" placeholder="ten@congty.com">
   <label>Trello (tuỳ chọn: link bảng hoặc workspace mở sẵn)</label><input id="f_trello" value="${esc(p.trelloUrl || '')}" placeholder="https://trello.com/w/tencongty (để trống = trang chủ Trello)">
+  <label>Discord (tuỳ chọn: link server/kênh mở sẵn)</label><input id="f_discord" value="${esc(p.discordUrl || '')}" placeholder="https://discord.com/channels/... (để trống = trang chủ Discord)">
   <label>Logo (tuỳ chọn)</label>
   <div class="row"><div class="logoPrev" id="f_logoPrev"></div><button id="f_logoPick">Chọn ảnh…</button><button class="ghost" id="f_logoDel">Bỏ logo</button><input type="file" id="f_logoFile" accept="image/png,image/jpeg,image/webp,image/gif" class="hidden"></div>
   <label>Màu (khi không có logo)</label>${colorPicker('f_color', p.color)}
@@ -144,7 +145,7 @@ function profileForm(p) {
   $('f_logoDel').onclick = () => { logo = ''; showLogo(); };
   $('f_cancel').onclick = closeModal;
   $('f_save').onclick = async () => {
-    const r = await call('prof:save', { id: p.id, name: $('f_name').value, slackUrl: $('f_slack').value, gmail: $('f_gmail').value, trelloUrl: $('f_trello').value, color: pickedColor('f_color'), notify: $('f_notify').checked, logo });
+    const r = await call('prof:save', { id: p.id, name: $('f_name').value, slackUrl: $('f_slack').value, gmail: $('f_gmail').value, trelloUrl: $('f_trello').value, discordUrl: $('f_discord').value, color: pickedColor('f_color'), notify: $('f_notify').checked, logo });
     closeModal(); cur.profileId = r.id; if (!p.id) { cur.tab = 'slack'; panel = 'web'; } await refresh();
   };
   if (p.id) $('f_del').onclick = async () => {
