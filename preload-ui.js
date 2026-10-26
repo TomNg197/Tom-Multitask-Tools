@@ -1,7 +1,7 @@
 'use strict';
 const { contextBridge, ipcRenderer } = require('electron');
 
-const EVENTS = new Set(['ui:select', 'ui:tab', 'ui:badges', 'ui:event', 'ui:focus', 'ui:viewState', 'git:line', 'git:task', 'git:done', 'ui:translate', 'ui:update']);
+const EVENTS = new Set(['ui:select', 'ui:tab', 'ui:badges', 'ui:event', 'ui:focus', 'ui:viewState', 'git:line', 'git:task', 'git:done', 'ui:translate', 'ui:update', 'ui:freeze']);
 
 contextBridge.exposeInMainWorld('mt', {
   call: (ch, arg) => ipcRenderer.invoke(ch, arg),

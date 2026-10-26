@@ -158,3 +158,18 @@ html[data-os=darwin] .fly{padding-top:52px}
 .tlist{display:flex;flex-direction:column;gap:4px;margin-top:6px}.titem{display:flex;align-items:center;gap:8px}.titem input[type=checkbox]{width:auto}.titem .t{flex:1}.titem.done .t{text-decoration:line-through;color:var(--mute)}
 .plinks{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
 .pchk{display:flex;flex-wrap:wrap;gap:6px}.pchk label{display:flex;align-items:center;gap:6px;margin:0;padding:5px 9px;border-radius:99px;background:var(--fill);color:var(--ink);font-weight:600;cursor:pointer}.pchk input{width:auto}
+/* 2.7.0: ảnh chụp trang web nằm đúng chỗ web view trong lúc bảng hồ sơ trượt đè lên */
+.frozen{position:fixed;z-index:5;object-fit:fill;pointer-events:none;user-select:none}
+/* số tin riêng từng app: trên nút tab + chip nhỏ dưới tên hồ sơ trong bảng trượt */
+.vtabs button{position:relative}
+.tcnt{position:absolute;right:-4px;top:-4px;min-width:17px;height:17px;padding:0 4px;border-radius:99px;background:var(--err);color:#fff;font-size:10.5px;font-weight:700;line-height:17px;text-align:center;box-shadow:0 0 0 2px var(--tab)}
+.tcnt.dot{min-width:10px;width:10px;height:10px;padding:0;font-size:0;top:-1px;right:-1px}
+#profFly .bTxt{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px}
+.achs{display:flex;gap:4px;flex-wrap:wrap}
+.ach{display:inline-flex;align-items:center;gap:3px;font-size:10.5px;font-weight:700;color:var(--ink2,#555);background:var(--hover);border-radius:99px;padding:1px 6px 1px 4px}
+.ach i{width:7px;height:7px;border-radius:50%;display:inline-block}
+.a-slack i{background:#E01E5A}.a-google i{background:#EA4335}.a-trello i{background:#0C66E4}.a-discord i{background:#5865F2}
+.ev .who .app{font-size:11px;font-weight:600;opacity:.75;margin-top:2px}
+.napps{display:flex;gap:14px;flex-wrap:wrap;margin:6px 0 2px 26px}
+.napps label{display:flex;gap:6px;align-items:center;margin:0;color:var(--ink);font-weight:500}
+.napps input{width:auto}

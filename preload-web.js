@@ -1,6 +1,6 @@
 'use strict';
-// Runs in the Slack view. Slack calls window.Notification / ServiceWorkerRegistration.showNotification in the PAGE
-// world; with context isolation the hook is injected there and talks back through window.postMessage + a nonce.
+// Runs in the Slack / Gmail / Trello / Discord views (2.7.0: trước chỉ Slack). Trang gọi window.Notification /
+// ServiceWorkerRegistration.showNotification in the PAGE world; with context isolation the hook is injected there and talks back through window.postMessage + a nonce.
 // The page never gets ipcRenderer.
 const { ipcRenderer, webFrame } = require('electron');
 
@@ -9,7 +9,7 @@ const NONCE = Math.random().toString(36).slice(2) + Date.now().toString(36);
 window.addEventListener('message', (ev) => {
   const d = ev.data;
   if (ev.source !== window || !d || d.__mt !== NONCE) return;
-  ipcRenderer.send('slack:notify', { t: String(d.t || '').slice(0, 200), b: String(d.b || '').slice(0, 500) });
+  ipcRenderer.send('web:notify', { t: String(d.t || '').slice(0, 200), b: String(d.b || '').slice(0, 500) });
 });
 
 const HOOK = `(() => {

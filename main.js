@@ -29,11 +29,11 @@ let tray = null;
 let store = null;
 let quitting = false;
 let flushed = false;
-const views = {};          // profileId -> { slack: WebContentsView, google: WebContentsView }
-const unread = {};         // profileId -> number | '•'
-const events = [];         // notification feed
+const views = {};          // profileId -> { slack, google, trello, discord, web: WebContentsView }
+const unread = {};         // 2.7.0: profileId -> { slack, google, trello, discord: number | '•' } (đọc từ tiêu đề trang / feed Gmail)
+const events = [];         // notification feed: { id, p: profileId, k: kind, t, b, at, read }
 let evSeq = 0;
-let current = { profileId: null, tab: 'slack', overlay: false, peek: 0 };   // peek: bảng hồ sơ đang trượt ra → đẩy web view sang phải
+let current = { profileId: null, tab: 'slack', overlay: false, peek: 0 };   // peek: bảng hồ sơ đang trượt ra → web view tạm thay bằng ảnh chụp
 const gitStatus = {};      // accId -> {ok, who, expires, msg, at}
 const prepared = {};       // pairId -> prepare result
 let task = null;           // { id, title, lines: [], done, ok }
@@ -98,7 +98,7 @@ function sendUI(ch, data) { if (win && !win.isDestroyed()) win.webContents.send(
 
 function contentBounds() {
   const [w, h] = win.getContentSize();
-  const left = SIDEBAR + TABCOL + (current.peek || 0);
+  const left = SIDEBAR + TABCOL;
   return { x: left, y: TOPBAR, width: Math.max(100, w - left), height: Math.max(100, h - TOPBAR) };
 }
 
@@ -110,7 +110,7 @@ function layout(focusView) {
   if (!win) return;
   const cv = win.contentView;
   const p = profile(current.profileId);
-  const want = p && !current.overlay && WEB_KINDS.includes(current.tab) ? ensureView(p, current.tab) : null;
+  const want = p && !current.overlay && !current.peek && WEB_KINDS.includes(current.tab) ? ensureView(p, current.tab) : null;
   for (const pid of Object.keys(views)) {
     for (const k of WEB_KINDS) {
       const v = views[pid][k];
@@ -123,20 +123,37 @@ function layout(focusView) {
   if (focusView) want.webContents.focus();   // the user picked this profile / tab: typing goes straight there
 }
 
+let peekSeq = 0;
+function shownView() {
+  const cv = win && win.contentView; if (!cv) return null;
+  for (const pid of Object.keys(views)) for (const k of WEB_KINDS) { const v = views[pid][k]; if (v && cv.children.includes(v)) return v; }
+  return null;
+}
+
 // ------------------------------------------------------------------ profiles + web views
 function profile(id) { return store.cfg.profiles.find((p) => p.id === id); }
 function partitionOf(p) { return `persist:p-${p.id}`; }
 
-const WEB_KINDS = ['slack', 'google', 'trello', 'discord'];
+const WEB_KINDS = ['slack', 'google', 'trello', 'discord', 'web'];
+// ứng dụng có thông báo + số tin chưa đọc riêng (2.7.0); 'web' = tab mở mọi link khác ngay trong app, không báo tin
+const NOTIFY_KINDS = ['slack', 'google', 'trello', 'discord'];
+const KIND_LABEL = { slack: 'Slack', google: 'Gmail', trello: 'Trello', discord: 'Discord', web: 'Web' };
 const TRELLO_RE = /^https:\/\/([a-z0-9-]+\.)*(trello\.com|trellocdn\.com)\//i;
 const DISCORD_RE = /^https:\/\/([a-z0-9-]+\.)*(discord\.com|discordapp\.com|discord\.gg|discordapp\.net|discord\.media)\//i;
 const LOGIN_RE = /^https:\/\/(accounts\.google\.com|id\.atlassian\.com|appleid\.apple\.com|login\.microsoftonline\.com)\//i;
-const GOOGLE_RE = /^https:\/\/([a-z0-9-]+\.)*(google\.com|googleusercontent\.com|gstatic\.com)\//i;
+const GOOGLE_RE = /^https:\/\/([a-z0-9-]+\.)*(google\.com|googleusercontent\.com|gstatic\.com|forms\.gle|goo\.gl)\//i;
 const SLACK_RE = /^https:\/\/([a-z0-9-]+\.)*(slack\.com|slack-edge\.com|slack-files\.com|slack-redir\.net)\//i;
 
 function trelloHome(p) { return p.trelloUrl || 'https://trello.com/'; }
 function discordHome(p) { return p.discordUrl || 'https://discord.com/app'; }
-function homeOf(p, kind) { return kind === 'slack' ? (p.slackUrl || 'https://app.slack.com/client') : kind === 'trello' ? trelloHome(p) : kind === 'discord' ? discordHome(p) : googleHome(p); }
+function homeOf(p, kind) { return kind === 'slack' ? (p.slackUrl || 'https://app.slack.com/client') : kind === 'trello' ? trelloHome(p) : kind === 'discord' ? discordHome(p) : kind === 'web' ? 'about:blank' : googleHome(p); }
+// bật báo tin hệ điều hành cho từng app của hồ sơ; chưa chỉnh lần nào: Slack bật, app khác bật khi hồ sơ đã điền link/Gmail của app đó
+function notifyOn(p, kind) {
+  if (!p || p.notify === false || !NOTIFY_KINDS.includes(kind)) return false;
+  const a = p.notifyApps || {};
+  if (typeof a[kind] === 'boolean') return a[kind];
+  return kind === 'slack' || (kind === 'google' && !!p.gmail) || (kind === 'trello' && !!p.trelloUrl) || (kind === 'discord' && !!p.discordUrl);
+}
 
 function googleHome(p) {
   return p.gmail ? `https://drive.google.com/drive/my-drive?authuser=${encodeURIComponent(p.gmail)}` : 'https://drive.google.com/drive/my-drive';
@@ -171,15 +188,18 @@ function ensureView(p, kind) {
   const v = new WebContentsView({
     webPreferences: {
       partition: partitionOf(p), contextIsolation: true, nodeIntegration: false, sandbox: true,
-      backgroundThrottling: kind !== 'slack' && kind !== 'discord',   // Slack / Discord keep receiving while hidden / in the tray
-      preload: kind === 'slack' ? path.join(__dirname, 'preload-slack.js') : undefined,
+      backgroundThrottling: !(kind === 'slack' || kind === 'discord' || (kind === 'trello' && notifyOn(p, 'trello'))),   // app báo tin vẫn nhận khi ẩn / nằm khay
+      preload: NOTIFY_KINDS.includes(kind) ? path.join(__dirname, 'preload-web.js') : undefined,
     },
   });
   const wc = v.webContents;
   wc.__mtProfile = p.id;
   wc.__mtKind = kind;
   wc.setWindowOpenHandler(({ url }) => routeLink(p, url, kind));
-  wc.on('page-title-updated', (e, title) => { if (kind === 'slack') setUnread(p.id, parseUnread(title)); else if (kind === 'discord') setUnreadDiscord(p.id, parseUnread(title)); });
+  wc.on('page-title-updated', (e, title) => {
+    if (kind === 'slack' || kind === 'discord') setUnread(p.id, kind, parseUnread(title));
+    else if (kind === 'google' && /^https:\/\/mail\.google\.com\//.test(wc.getURL())) setUnread(p.id, 'google', parseGmailTitle(title));   // tab đang ở Drive thì giữ số của feed Gmail
+  });
   wc.on('did-finish-load', () => sendUI('ui:viewState', { profileId: p.id, kind, url: wc.getURL(), title: wc.getTitle() }));
   wc.on('did-navigate', () => sendUI('ui:viewState', { profileId: p.id, kind, url: wc.getURL(), title: wc.getTitle() }));
   wc.on('context-menu', (e, params) => contextMenu(p, wc, params));
@@ -235,7 +255,8 @@ function routeLink(p, url, fromKind) {
     // huddles, file previews... open in a window that shares this profile's session
     return popupInProfile(p);
   }
-  if (/^https?:\/\//i.test(url)) shell.openExternal(url);
+  // 2.7.0: link khác (Google Form rút gọn, web bất kỳ…) mở ngay trong app, ở tab Web của hồ sơ, dùng chung phiên đăng nhập
+  if (/^https?:\/\//i.test(url)) return openInTab(p, 'web', url);
   return { action: 'deny' };
 }
 
@@ -292,34 +313,44 @@ function parseUnread(title) {
   return n ? parseInt(n, 10) : '•';
 }
 
-const unreadDiscord = {};   // profileId -> number | '•' (tiêu đề Discord dạng "(3) Discord | ...")
-function setUnreadDiscord(pid, val) {
-  if (unreadDiscord[pid] === val) return;
-  unreadDiscord[pid] = val;
+// Gmail: "Hộp thư đến (12) - ten@congty.com - Gmail" / "Inbox (12) - …"
+function parseGmailTitle(title) { const m = (title || '').match(/\((\d+)\)/); return m ? parseInt(m[1], 10) : 0; }
+
+function setUnread(pid, kind, val) {
+  const u = unread[pid] = unread[pid] || {};
+  if (u[kind] === val) return;
+  u[kind] = val;
   refreshBadge();
 }
 
-function setUnread(pid, val) {
-  if (unread[pid] === val) return;
-  unread[pid] = val;
-  refreshBadge();
-}
+function newCount(pid, kind) { return events.filter((e) => e.p === pid && !e.read && (!kind || (e.k || 'slack') === kind)).length; }
 
-function newCount(pid) { return events.filter((e) => e.p === pid && !e.read).length; }
+// số hiển thị của một app trong một hồ sơ: số trên tiêu đề trang, hoặc số tin mới app đã báo (lấy cái lớn hơn)
+function countOf(pid, kind) {
+  const u = (unread[pid] || {})[kind];
+  const n = Math.max(typeof u === 'number' ? u : 0, newCount(pid, kind));
+  return { n, dot: !n && u === '•' };
+}
+function badgeTable() {
+  const out = {};
+  for (const p of store.cfg.profiles) {
+    const row = { total: 0, dot: false };
+    for (const k of NOTIFY_KINDS) { const c = countOf(p.id, k); row[k] = c; row.total += c.n; row.dot = row.dot || c.dot; }
+    out[p.id] = row;
+  }
+  return out;
+}
 
 function refreshBadge() {
+  const table = badgeTable();
   let total = 0; let dot = false;
-  for (const p of store.cfg.profiles) {
-    const u = unread[p.id]; const ud = unreadDiscord[p.id];
-    const n = Math.max(typeof u === 'number' ? u : 0, newCount(p.id)) + (typeof ud === 'number' ? ud : 0);
-    total += n; if (u === '•' || ud === '•') dot = true;
-  }
+  for (const r of Object.values(table)) { total += r.total; dot = dot || r.dot; }
   if (IS_MAC || process.platform === 'linux') app.setBadgeCount(total);
   if (win && process.platform === 'win32') {
     win.setOverlayIcon(total || dot ? nativeImage.createFromPath(iconPath('badge.png')) : null, total ? `${total} tin chưa đọc` : '');
   }
   if (tray) { tray.setToolTip(total ? `${APP_NAME}: ${total} tin chưa đọc` : APP_NAME); updateTrayMenu(); }
-  sendUI('ui:badges', { unread, unreadDiscord, news: Object.fromEntries(store.cfg.profiles.map((p) => [p.id, newCount(p.id)])) });
+  sendUI('ui:badges', { badges: table, news: Object.fromEntries(store.cfg.profiles.map((p) => [p.id, newCount(p.id)])) });
 }
 
 function notify(title, body, onClick) {
@@ -329,26 +360,79 @@ function notify(title, body, onClick) {
   n.show();
 }
 
-ipcMain.on('slack:notify', (e, data) => {
-  const pid = e.sender.__mtProfile;
+function openApp(pid, kind) {
+  current = { ...current, profileId: pid, tab: kind, overlay: false };
+  showWindow(pid); sendUI('ui:tab', kind); layout(); refreshBadge();
+}
+
+// tin mới của một app trong một hồ sơ: ghi vào danh sách Tin mới + hiện thông báo hệ điều hành (nếu app đó đang bật báo tin)
+function pushEvent(pid, kind, t, b) {
   const p = profile(pid);
-  if (!p || !data) return;
-  const ev = { id: ++evSeq, p: pid, t: String(data.t || '').slice(0, 200), b: String(data.b || '').slice(0, 500), at: Date.now(), read: false };
+  if (!p) return null;
+  const ev = { id: ++evSeq, p: pid, k: kind, t: String(t || '').slice(0, 200), b: String(b || '').slice(0, 500), at: Date.now(), read: false };
   events.unshift(ev); events.length = Math.min(events.length, 500);
   refreshBadge();
   sendUI('ui:event', ev);
-  const looking = win && win.isVisible() && win.isFocused() && current.profileId === pid && current.tab === 'slack' && !current.overlay;
-  if (p.notify !== false && !looking) {
-    notify(`${p.name} · ${ev.t || 'Slack'}`, ev.b, () => { ev.read = true; current = { ...current, profileId: pid, tab: 'slack' }; showWindow(pid); sendUI('ui:tab', 'slack'); layout(); refreshBadge(); });
+  const looking = win && win.isVisible() && win.isFocused() && current.profileId === pid && current.tab === kind && !current.overlay;
+  if (notifyOn(p, kind) && !looking) {
+    notify(`${p.name} · ${KIND_LABEL[kind] || kind}${ev.t ? ' · ' + ev.t : ''}`, ev.b, () => { ev.read = true; openApp(pid, kind); });
   }
+  return ev;
+}
+
+ipcMain.on('web:notify', (e, data) => {
+  const kind = e.sender.__mtKind;
+  if (!data || !NOTIFY_KINDS.includes(kind)) return;
+  // Gmail trong tab Google tự báo tin thì thôi không báo lại từ feed (gmailPoll bỏ qua mail đã thấy)
+  pushEvent(e.sender.__mtProfile, kind, data.t, data.b);
 });
+
+// ------------------------------------------------------------------ Gmail: đếm thư chưa đọc + báo thư mới qua feed Atom
+// Không cần mở Gmail: feed nhẹ, dùng cookie đăng nhập Google của chính hồ sơ (session riêng). Chưa đăng nhập thì feed trả 401 → bỏ qua.
+const gmailSeen = {};   // profileId -> Set(id thư đã thấy)
+function parseGmailFeed(xml) {
+  const full = (String(xml).match(/<fullcount>(\d+)<\/fullcount>/) || [])[1];
+  const un = (s) => String(s || '').replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, '&').trim();
+  const pick = (body, tag) => un((body.match(new RegExp(`<${tag}[^>]*>([\\s\\S]*?)<\\/${tag}>`)) || [])[1]);
+  const entries = [];
+  for (const m of String(xml).matchAll(/<entry>([\s\S]*?)<\/entry>/g)) {
+    const body = m[1]; const author = (body.match(/<author>([\s\S]*?)<\/author>/) || [])[1] || '';
+    entries.push({ id: pick(body, 'id'), title: pick(body, 'title'), summary: pick(body, 'summary'), from: pick(author, 'name') || pick(author, 'email') });
+  }
+  return { count: full === undefined ? null : parseInt(full, 10), entries };
+}
+function gmailFeedUrl(p) {
+  if (process.env.METATOOLS_GMAIL_FEED) return process.env.METATOOLS_GMAIL_FEED.replace('{gmail}', encodeURIComponent(p.gmail || '0'));   // tests
+  return `https://mail.google.com/mail/u/${p.gmail ? encodeURIComponent(p.gmail) : '0'}/feed/atom`;
+}
+async function gmailPoll(p) {
+  try {
+    const r = await setupSession(p).fetch(gmailFeedUrl(p), { credentials: 'include', redirect: 'manual', cache: 'no-store' });
+    if (!r.ok) return;
+    const f = parseGmailFeed(await r.text());
+    if (f.count === null) return;
+    setUnread(p.id, 'google', f.count);
+    const first = !gmailSeen[p.id]; const seen = gmailSeen[p.id] = gmailSeen[p.id] || new Set();
+    const gv = views[p.id] && views[p.id].google;
+    const gmailOpen = gv && /^https:\/\/mail\.google\.com\//.test(gv.webContents.getURL());   // Gmail đang mở trong tab: trang tự báo
+    for (const e of f.entries.slice().reverse()) {
+      if (!e.id || seen.has(e.id)) continue;
+      seen.add(e.id);
+      if (!first && !gmailOpen) pushEvent(p.id, 'google', e.from ? `${e.from}: ${e.title}` : e.title, e.summary);
+    }
+  } catch (_) { /* mất mạng / chưa đăng nhập: lần sau thử lại */ }
+}
+function gmailPollAll() {
+  for (const p of store.cfg.profiles) if (p.notify !== false && (p.gmail || notifyOn(p, 'google'))) gmailPoll(p);
+}
 
 // ------------------------------------------------------------------ tray
 function updateTrayMenu() {
   if (!tray) return;
   const items = store.cfg.profiles.map((p) => {
-    const u = unread[p.id]; const n = Math.max(typeof u === 'number' ? u : 0, newCount(p.id));
-    return { label: `${p.name}${n ? `  (${n})` : u === '•' ? '  •' : ''}`, click: () => { current = { ...current, profileId: p.id, tab: 'slack' }; showWindow(p.id); sendUI('ui:tab', 'slack'); layout(); } };
+    const c = NOTIFY_KINDS.map((k) => [k, countOf(p.id, k)]); const n = c.reduce((a, [, x]) => a + x.n, 0); const dot = c.some(([, x]) => x.dot);
+    const first = (c.find(([, x]) => x.n || x.dot) || ['slack'])[0];   // bấm tên hồ sơ: mở app đang có tin
+    return { label: `${p.name}${n ? `  (${n})` : dot ? '  •' : ''}`, click: () => openApp(p.id, first) };
   });
   tray.setContextMenu(Menu.buildFromTemplate([
     { label: `Mở ${APP_NAME}`, click: () => showWindow() },
@@ -367,7 +451,7 @@ function createTray() {
 }
 
 // ------------------------------------------------------------------ IPC: app + profiles
-const PROFILE_FIELDS = ['name', 'color', 'slackUrl', 'gmail', 'trelloUrl', 'discordUrl', 'notify', 'logo'];
+const PROFILE_FIELDS = ['name', 'color', 'slackUrl', 'gmail', 'trelloUrl', 'discordUrl', 'notify', 'notifyApps', 'logo'];
 
 // profile logo: a small square picture the UI already cropped/resized (data URL). Anything else is dropped.
 const LOGO_MAX = 400 * 1024;
@@ -407,7 +491,7 @@ function cleanSlackUrl(u) {
 function publicState() {
   return {
     version: BOOT.version, shellVersion: BOOT.shellVersion, platform: process.platform,
-    profiles: store.cfg.profiles, projects: store.cfg.projects, projSync: store.cfg.projSync, current, unread, unreadDiscord,
+    profiles: store.cfg.profiles, projects: store.cfg.projects, projSync: store.cfg.projSync, current, badges: badgeTable(),
     news: Object.fromEntries(store.cfg.profiles.map((p) => [p.id, newCount(p.id)])),
     settings: { openAtLogin: app.getLoginItemSettings().openAtLogin, autoUpdate: store.cfg.settings.autoUpdate !== false },
     update: updPublic(),
@@ -418,17 +502,40 @@ const handlers = {
   'app:state': () => publicState(),
   'app:show': (a) => {
     current = { profileId: a.profileId ?? current.profileId, tab: a.tab || current.tab, overlay: !!a.overlay };
-    if (a.markRead && current.profileId && current.tab === 'slack' && win && win.isVisible()) {
-      // the user opened this profile's Slack: its in-app notifications count as read
+    if (a.markRead && current.profileId && NOTIFY_KINDS.includes(current.tab) && win && win.isVisible()) {
+      // the user opened this app of this profile: its notifications count as read
       let changed = false;
-      events.forEach((e) => { if (e.p === current.profileId && !e.read) { e.read = true; changed = true; } });
+      events.forEach((e) => { if (e.p === current.profileId && (e.k || 'slack') === current.tab && !e.read) { e.read = true; changed = true; } });
       if (changed) refreshBadge();
     }
     layout(!!a.focus && win && win.isFocused());
     return true;
   },
-  // bảng hồ sơ (di chuột vào nút Hồ sơ) trượt ra bên phải cột trái: web view là lớp gốc nằm trên HTML nên phải nhường chỗ
-  'app:peek': (a) => { const w = Math.max(0, Math.min(420, (a && a.w) | 0)); if (current.peek !== w) { current.peek = w; layout(); } return true; },
+  // bảng hồ sơ (di chuột vào nút Hồ sơ) trượt ra: web view là lớp nằm TRÊN giao diện HTML nên bảng không đè lên được.
+  // 2.6.0 đẩy web view sang phải → trang bị co lại rồi giãn ra mỗi lần rê chuột (sếp thấy khó chịu). 2.7.0: chụp ảnh trang,
+  // giao diện hiện ảnh đó đúng chỗ cũ, gỡ web view ra cho bảng trượt đè lên; đóng bảng thì gắn lại, kích thước trang không đổi.
+  'app:peek': async (a) => {
+    const open = !!(a && a.w);
+    const seq = ++peekSeq;
+    if (!open) {
+      if (!current.peek) return true;
+      current.peek = 0; layout();
+      setTimeout(() => { if (seq === peekSeq) sendUI('ui:freeze', null); }, 80);   // web view gắn lại xong mới bỏ ảnh → không nháy
+      return true;
+    }
+    if (current.peek) return true;
+    const v = shownView();
+    if (v) {
+      try {
+        const img = await v.webContents.capturePage();
+        if (seq !== peekSeq) return true;   // bảng đã đóng trong lúc chụp
+        sendUI('ui:freeze', { src: 'data:image/jpeg;base64,' + img.toJPEG(85).toString('base64'), bounds: v.getBounds() });
+      } catch (_) { /* chụp lỗi: vẫn mở bảng, chỉ thiếu ảnh nền */ }
+    }
+    if (seq !== peekSeq) return true;
+    current.peek = 1; layout();
+    return true;
+  },
   // ---- dự án (2.6.0)
   'proj:save': (a) => {
     const d = a || {};
@@ -481,7 +588,8 @@ const handlers = {
     if (!name) throw new Error('Đặt tên cho hồ sơ (ví dụ: Công ty, Khách A).');
     const gmail = String(d.gmail || '').trim();
     if (gmail && !/^[^@\s]+@[^@\s]+\.[a-z]{2,}$/i.test(gmail)) throw new Error('Gmail không hợp lệ.');
-    const vals = { name, color: d.color || '#7c4dff', slackUrl: cleanSlackUrl(d.slackUrl), gmail, trelloUrl: cleanTrelloUrl(d.trelloUrl), discordUrl: cleanDiscordUrl(d.discordUrl), notify: d.notify !== false, logo: cleanLogo(d.logo) };
+    const vals = { name, color: d.color || '#7c4dff', slackUrl: cleanSlackUrl(d.slackUrl), gmail, trelloUrl: cleanTrelloUrl(d.trelloUrl), discordUrl: cleanDiscordUrl(d.discordUrl), notify: d.notify !== false, logo: cleanLogo(d.logo),
+      notifyApps: Object.fromEntries(NOTIFY_KINDS.filter((k) => d.notifyApps && typeof d.notifyApps[k] === 'boolean').map((k) => [k, d.notifyApps[k]])) };
     let p = d.id && profile(d.id);
     if (p) {
       const slackChanged = p.slackUrl !== vals.slackUrl;
@@ -496,6 +604,8 @@ const handlers = {
       store.cfg.profiles.push(p);
     }
     store.save(); updateTrayMenu(); refreshBadge();
+    for (const k of ['slack', 'trello', 'discord']) if (notifyOn(p, k)) ensureView(p, k);   // vừa bật báo tin: chạy ngầm luôn
+    if (notifyOn(p, 'google')) gmailPoll(p);
     return p;
   },
   'prof:delete': async (a) => {
@@ -507,7 +617,7 @@ const handlers = {
     store.cfg.projects.forEach((pr) => { pr.profileIds = (pr.profileIds || []).filter((x) => x !== p.id); });
     store.cfg.gitAccounts.forEach((g) => { if (g.profileId === p.id) g.profileId = null; });
     store.cfg.pairs.forEach((x) => { if (x.profileId === p.id) x.profileId = null; });
-    delete unread[p.id]; delete unreadDiscord[p.id];
+    delete unread[p.id]; delete gmailSeen[p.id];
     store.save(); updateTrayMenu(); refreshBadge();
     if (current.profileId === p.id) current = { ...current, profileId: null };
     layout();
@@ -524,8 +634,8 @@ const handlers = {
   'feed:clear': () => { events.length = 0; refreshBadge(); return true; },
   'feed:open': (a) => {
     const ev = events.find((e) => e.id === a.id); if (!ev) return false;
-    ev.read = true; current = { ...current, profileId: ev.p, tab: 'slack', overlay: false };
-    sendUI('ui:select', ev.p); sendUI('ui:tab', 'slack'); layout(); refreshBadge();
+    ev.read = true; const k = ev.k || 'slack'; current = { ...current, profileId: ev.p, tab: k, overlay: false };
+    sendUI('ui:select', ev.p); sendUI('ui:tab', k); layout(); refreshBadge();
     return true;
   },
   'app:setLogin': (a) => { app.setLoginItemSettings({ openAtLogin: !!a.on, openAsHidden: true, args: ['--hidden'] }); return app.getLoginItemSettings().openAtLogin; },
@@ -827,14 +937,17 @@ app.whenReady().then(() => {
   if (process.env.METATOOLS_SELFTEST) require('./test/selftest')({ win, handlers, store, views, events, layout, ensureView, routeLink, current: () => current });
   if (process.env.METATOOLS_UPDATE_SELFTEST) require('./test/selftest-update')({ win, handlers, store, upd, BOOT, confirmStart });
   if (process.env.METATOOLS_UI_SELFTEST) require('./test/selftest-ui')({ win, handlers, store, views });
+  if (process.env.METATOOLS_27_SELFTEST) require('./test/selftest-27')({ win, handlers, store, views, events, ensureView, routeLink, gmailPollAll, current: () => current, ui: (js) => win.webContents.executeJavaScript(js, true) });
   if (process.env.METATOOLS_IME_SELFTEST) require('./test/selftest-ime')({ win, handlers, store, layout, ensureView, refreshBadge, ui: (js) => win.webContents.executeJavaScript(js, true) });
   // automatic update check: 30 s after start, then hourly (each check itself waits 6 h since the last one)
   setTimeout(autoCheck, 30000);
   setInterval(autoCheck, 3600 * 1000);
-  // start every Slack in the background so notifications arrive without opening each one
+  // chạy ngầm các app đang bật báo tin (Slack, Trello, Discord) để tin tới mà không phải mở từng cái; Gmail đọc qua feed, không cần mở
   setTimeout(() => {
-    for (const p of store.cfg.profiles) if (p.notify !== false) ensureView(p, 'slack');
+    for (const p of store.cfg.profiles) for (const k of ['slack', 'trello', 'discord']) if (notifyOn(p, k)) ensureView(p, k);
+    gmailPollAll();
   }, 1500);
+  setInterval(gmailPollAll, Number(process.env.METATOOLS_GMAIL_POLL_MS) || 60000);
 });
 
 app.on('activate', () => showWindow());

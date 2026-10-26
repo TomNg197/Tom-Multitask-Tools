@@ -1,6 +1,13 @@
-## Tom Multitask 2.6 (trước đây là MetaTools)
+## Tom Multitask 2.7 (trước đây là MetaTools)
 
-**Mới ở bản 2.6.0:**
+**Mới ở bản 2.7.0:**
+- **Thông báo riêng từng app của mỗi hồ sơ:** Slack, Gmail, Trello, Discord đều có số tin chưa đọc riêng: hiện trên nút tab của app, dưới tên hồ sơ trong bảng Hồ sơ (vd "Gmail 3 · Discord 1") và cộng vào icon app. Thông báo hệ điều hành ghi rõ "Hồ sơ · App · tiêu đề", bấm vào mở đúng hồ sơ và đúng app. Mở app nào thì số của app đó về 0.
+- **Bật/tắt báo tin từng app:** Sửa hồ sơ → tick Slack / Gmail / Trello / Discord. App được bật sẽ chạy ngầm để nhận tin (tốn thêm RAM). Mặc định: Slack bật; Gmail/Trello/Discord bật nếu hồ sơ đã điền Gmail/link tương ứng.
+- **Gmail không cần mở:** đếm thư chưa đọc và báo thư mới mỗi phút qua feed của Google bằng phiên đăng nhập của hồ sơ (phải đăng nhập Google trong tab Drive/Gmail một lần).
+- **Bảng Hồ sơ trượt ra không làm trang co giãn nữa:** trang web giữ nguyên kích thước, bảng trượt đè lên trên.
+- **Mọi link mở ngay trong app:** link trước đây bị đẩy ra trình duyệt (Google Form rút gọn forms.gle, web bất kỳ…) giờ mở trong tab **Web** mới của đúng hồ sơ, chung phiên đăng nhập. Cần ra trình duyệt ngoài thì bấm ↗.
+
+**Bản 2.6.0:**
 - **Tab Discord cho mỗi hồ sơ:** đăng nhập Discord riêng từng hồ sơ, chạy nền vẫn nhận tin, số tin chưa đọc cộng vào icon app. Sửa hồ sơ → ô Discord để mở sẵn một server/kênh. Link discord.gg / discord.com bấm từ tab khác tự mở vào tab Discord của đúng hồ sơ.
 - **Nút Hồ sơ gọn:** cột trái chỉ còn nút Hồ sơ (ảnh hồ sơ đang mở + tổng tin chưa đọc), Dự án, Tin mới, Cài đặt. Di chuột vào Hồ sơ là bảng danh sách hồ sơ trượt ra bên phải. Phím tắt **Ctrl/Cmd + 1…9** chuyển nhanh hồ sơ.
 - **Quản lý dự án:** thẻ dự án có trạng thái, hạn chót (trễ đỏ, sắp tới hạn vàng), người phụ trách, tiến độ %, checklist việc, ghi chú, link tài liệu, gắn với nhiều hồ sơ và nút mở nhanh Slack / Trello / Discord / Git của từng hồ sơ.

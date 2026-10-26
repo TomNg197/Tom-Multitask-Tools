@@ -58,25 +58,29 @@ async function refresh() {
   render();
 }
 
-function unreadOf(pid) {
-  const u = S.unread[pid]; const ud = (S.unreadDiscord || {})[pid];
-  const n = Math.max(typeof u === 'number' ? u : 0, S.news[pid] || 0) + (typeof ud === 'number' ? ud : 0);
-  return { n, dot: !n && (u === '•' || ud === '•') };
-}
-function badgeOf(pid) {
-  const { n, dot } = unreadOf(pid);
-  if (n) return `<span class="cnt">${n > 99 ? '99+' : n}</span>`;
-  if (dot) return '<span class="cnt dot">•</span>';
+// 2.7.0: main gửi sẵn bảng số tin theo từng app của từng hồ sơ: badges[pid] = { total, dot, slack: {n, dot}, google, trello, discord }
+const APPS = [['slack', 'Slack'], ['google', 'Gmail'], ['trello', 'Trello'], ['discord', 'Discord']];
+function unreadOf(pid) { const r = (S.badges || {})[pid]; return r ? { n: r.total, dot: !r.total && r.dot } : { n: 0, dot: false }; }
+function cntHtml(n, dot, cls) {
+  if (n) return `<span class="${cls}">${n > 99 ? '99+' : n}</span>`;
+  if (dot) return `<span class="${cls} dot">•</span>`;
   return '';
 }
+function badgeOf(pid) { const { n, dot } = unreadOf(pid); return cntHtml(n, dot, 'cnt'); }
+// dòng hồ sơ trong bảng trượt: số tin riêng từng app (chỉ app đang có tin)
+function appChips(pid) {
+  const r = (S.badges || {})[pid]; if (!r) return '';
+  const chips = APPS.filter(([k]) => r[k] && (r[k].n || r[k].dot)).map(([k, label]) => `<span class="ach a-${k}" title="${label}: ${r[k].n || 'có tin mới'}"><i></i>${label} ${r[k].n ? (r[k].n > 99 ? '99+' : r[k].n) : '•'}</span>`);
+  return chips.length ? `<span class="achs">${chips.join('')}</span>` : '';
+}
 
-const TAB_NAMES = { slack: 'Slack', google: 'Drive / Gmail', trello: 'Trello', discord: 'Discord', git: 'Git' };
+const TAB_NAMES = { slack: 'Slack', google: 'Drive / Gmail', trello: 'Trello', discord: 'Discord', web: 'Web', git: 'Git' };
 
 function render() {
   const focusedBub = document.activeElement && document.activeElement.classList.contains('bub') ? document.activeElement.dataset.id : null;
   // 2.6.0: hồ sơ nằm trong bảng trượt (#profFly); mỗi dòng = ảnh/chữ tắt + tên + số tin chưa đọc
   $('profs').innerHTML = S.profiles.map((p, i) => { const on = p.id === cur.profileId && (panel === 'web' || panel === 'git');
-    return `<div class="bub ${on ? 'on' : ''}" role="button" tabindex="0" aria-current="${on ? 'true' : 'false'}" aria-label="${esc(p.name)}" data-id="${p.id}" title="${esc(p.name)}${i < 9 ? ' · Ctrl+' + (i + 1) : ''}"><span class="bAva" style="background:${p.logo ? 'var(--card)' : esc(p.color)}">${avatarHtml(p)}</span><span class="bName">${esc(p.name)}</span>${badgeOf(p.id)}</div>`; }).join('');
+    return `<div class="bub ${on ? 'on' : ''}" role="button" tabindex="0" aria-current="${on ? 'true' : 'false'}" aria-label="${esc(p.name)}" data-id="${p.id}" title="${esc(p.name)}${i < 9 ? ' · Ctrl+' + (i + 1) : ''}"><span class="bAva" style="background:${p.logo ? 'var(--card)' : esc(p.color)}">${avatarHtml(p)}</span><span class="bTxt"><span class="bName">${esc(p.name)}</span>${appChips(p.id)}</span>${badgeOf(p.id)}</div>`; }).join('');
   { const cp = prof(cur.profileId); const a = $('profBtnAva');
     if (cp) { setAvatar(a, cp); a.classList.remove('empty'); } else { a.innerHTML = '＋'; a.style.background = ''; a.classList.add('empty'); }
     let tn = 0, td = false; S.profiles.forEach((x) => { const u = unreadOf(x.id); tn += u.n; td = td || u.dot; });
@@ -100,6 +104,11 @@ function render() {
   document.querySelectorAll('#tabs button').forEach((b) => {
     const on = b.dataset.tab === cur.tab;
     b.classList.toggle('on', on); b.setAttribute('aria-selected', on ? 'true' : 'false'); b.tabIndex = on ? 0 : -1;
+    // số tin riêng của app này trong hồ sơ đang chọn
+    const r = p && (S.badges || {})[p.id] && S.badges[p.id][b.dataset.tab]; let c = b.querySelector('.tcnt');
+    const html = r ? cntHtml(r.n, r.dot, 'tcnt') : '';
+    if (c) c.remove();
+    if (html) b.insertAdjacentHTML('beforeend', html);
   });
   for (const [id, k] of [['pWeb', 'web'], ['pGit', 'git'], ['pFeed', 'feed'], ['pSet', 'settings'], ['pProj', 'projects'], ['pEmpty', 'empty']]) $(id).classList.toggle('hidden', panel !== k);
   if (panel === 'git') renderGit();
@@ -138,6 +147,12 @@ function segVal(id) { const on = document.querySelector(`#${id} button.on`); ret
 function seg(id, opts, val) { return `<div class="seg" id="${id}">${opts.map(([v, l]) => `<button type="button" data-v="${v}" class="${v === val ? 'on' : ''}">${l}</button>`).join('')}</div>`; }
 
 // ------------------------------------------------------------------ profile form
+// giống notifyOn() bên main: chưa chỉnh lần nào thì Slack bật, app khác bật khi hồ sơ đã điền link/Gmail của app đó
+function notifyDefault(p, k) {
+  const a = p.notifyApps || {};
+  if (typeof a[k] === 'boolean') return a[k];
+  return k === 'slack' || (k === 'google' && !!p.gmail) || (k === 'trello' && !!p.trelloUrl) || (k === 'discord' && !!p.discordUrl);
+}
 function profileForm(p) {
   p = p || { color: COLORS[(S.profiles.length) % COLORS.length], notify: true };
   openModal(`<h3>${p.id ? 'Sửa hồ sơ' : 'Hồ sơ mới'}</h3>
@@ -151,16 +166,21 @@ function profileForm(p) {
   <div class="row"><div class="logoPrev" id="f_logoPrev"></div><button id="f_logoPick">Chọn ảnh…</button><button class="ghost" id="f_logoDel">Bỏ logo</button><input type="file" id="f_logoFile" accept="image/png,image/jpeg,image/webp,image/gif" class="hidden"></div>
   <label>Màu (khi không có logo)</label>${colorPicker('f_color', p.color)}
   <label style="display:flex;gap:8px;align-items:center;color:var(--ink)"><input type="checkbox" id="f_notify" style="width:auto" ${p.notify !== false ? 'checked' : ''}> Báo tin mới (chạy ngầm cả khi đóng cửa sổ)</label>
+  <div class="napps" id="f_napps">${APPS.map(([k, label]) => `<label><input type="checkbox" class="f_napp" value="${k}" ${notifyDefault(p, k) ? 'checked' : ''}> ${label}</label>`).join('')}</div>
+  <div class="mute small">Bật app nào thì app đó chạy ngầm và hiện thông báo riêng (tốn thêm RAM mỗi app). Gmail chỉ đọc số thư mới, không phải mở Gmail.</div>
   <div class="row" style="margin-top:16px">${p.id ? '<button class="err" id="f_del">Xoá hồ sơ</button>' : ''}<span class="grow"></span><button id="f_cancel">Huỷ</button><button class="pri" id="f_save">Lưu</button></div>`);
   let logo = p.logo || '';
   const showLogo = () => { setAvatar($('f_logoPrev'), { name: $('f_name').value || p.name || '?', color: pickedColor('f_color') || p.color, logo }); $('f_logoDel').classList.toggle('hidden', !logo); };
   showLogo(); $('f_name').addEventListener('input', showLogo); $('f_color').addEventListener('click', () => setTimeout(showLogo));
+  const syncNapps = () => document.querySelectorAll('.f_napp').forEach((c) => { c.disabled = !$('f_notify').checked; });
+  $('f_notify').addEventListener('change', syncNapps); syncNapps();
   $('f_logoPick').onclick = () => $('f_logoFile').click();
   $('f_logoFile').onchange = async (e) => { try { logo = await readLogo(e.target.files[0]); showLogo(); } catch (err) { toast(err.message, true); } e.target.value = ''; };
   $('f_logoDel').onclick = () => { logo = ''; showLogo(); };
   $('f_cancel').onclick = closeModal;
   $('f_save').onclick = async () => {
-    const r = await call('prof:save', { id: p.id, name: $('f_name').value, slackUrl: $('f_slack').value, gmail: $('f_gmail').value, trelloUrl: $('f_trello').value, discordUrl: $('f_discord').value, color: pickedColor('f_color'), notify: $('f_notify').checked, logo });
+    const r = await call('prof:save', { id: p.id, name: $('f_name').value, slackUrl: $('f_slack').value, gmail: $('f_gmail').value, trelloUrl: $('f_trello').value, discordUrl: $('f_discord').value, color: pickedColor('f_color'), notify: $('f_notify').checked, logo,
+      notifyApps: Object.fromEntries([...document.querySelectorAll('.f_napp')].map((c) => [c.value, c.checked])) });
     closeModal(); cur.profileId = r.id; if (!p.id) { cur.tab = 'slack'; panel = 'web'; } await refresh();
   };
   if (p.id) $('f_del').onclick = async () => {
@@ -175,7 +195,7 @@ function profileForm(p) {
 async function renderFeed() {
   const evs = await call('feed:list');
   $('pFeed').innerHTML = `<div class="card"><h2>Tin mới của mọi hồ sơ <span class="grow"></span><button class="sm" id="fd_read">Đánh dấu đã đọc</button><button class="sm" id="fd_clear">Xoá danh sách</button></h2>
-  ${evs.length ? evs.map((e) => { const p = prof(e.p); return `<div class="ev ${e.read ? '' : 'new'}" data-ev="${e.id}"><div class="who" style="color:${esc(p ? p.color : '#888')}">${esc(p ? p.name : '?')}</div><div class="msg"><div><b>${esc(e.t || '(không tiêu đề)')}</b></div><div class="b">${esc(e.b)}</div></div><div class="tm">${new Date(e.at).toLocaleTimeString()}</div></div>`; }).join('') : '<div class="mute" style="padding:20px;text-align:center">Chưa có tin. Tin nhắn riêng, nhắc tên, tin mới của các hồ sơ sẽ hiện ở đây.</div>'}</div>`;
+  ${evs.length ? evs.map((e) => { const p = prof(e.p); return `<div class="ev ${e.read ? '' : 'new'}" data-ev="${e.id}"><div class="who" style="color:${esc(p ? p.color : '#888')}">${esc(p ? p.name : '?')}<div class="app a-${esc(e.k || 'slack')}">${esc((APPS.find(([k]) => k === (e.k || 'slack')) || [0, 'Slack'])[1])}</div></div><div class="msg"><div><b>${esc(e.t || '(không tiêu đề)')}</b></div><div class="b">${esc(e.b)}</div></div><div class="tm">${new Date(e.at).toLocaleTimeString()}</div></div>`; }).join('') : '<div class="mute" style="padding:20px;text-align:center">Chưa có tin. Tin nhắn riêng, nhắc tên, tin mới của các hồ sơ sẽ hiện ở đây.</div>'}</div>`;
   $('fd_read').onclick = async () => { await call('feed:readAll'); await refresh(); };
   $('fd_clear').onclick = async () => { await call('feed:clear'); await refresh(); };
   document.querySelectorAll('[data-ev]').forEach((el) => { el.onclick = async () => { await call('feed:open', { id: +el.dataset.ev }); }; });
@@ -417,7 +437,7 @@ function openFly() {
   clearTimeout(flyTimer);
   if (!$('profFly').classList.contains('hidden')) return;
   $('profFly').classList.remove('hidden'); $('profBtn').setAttribute('aria-expanded', 'true');
-  mt.call('app:peek', { w: 280 });   // web view là lớp gốc nằm trên giao diện: đẩy nó sang phải để bảng không bị che
+  mt.call('app:peek', { w: 280 });   // web view nằm trên giao diện: main chụp ảnh trang rồi gỡ view ra để bảng đè lên (2.7.0)
 }
 function closeFly(now) {
   clearTimeout(flyTimer);
@@ -528,7 +548,14 @@ function projectForm(x) {
 // ------------------------------------------------------------------ events from main
 mt.on('ui:select', (id) => { cur.profileId = id; if (panel !== 'git') panel = 'web'; refresh(); });
 mt.on('ui:tab', (t) => { cur.tab = t; panel = t === 'git' ? 'git' : 'web'; render(); });
-mt.on('ui:badges', (b) => { if (!S) return; S.unread = b.unread; S.unreadDiscord = b.unreadDiscord || {}; S.news = b.news; render(); });
+mt.on('ui:badges', (b) => { if (!S) return; S.badges = b.badges || {}; S.news = b.news; render(); });
+// bảng hồ sơ mở: main gửi ảnh chụp trang web để hiện đúng chỗ cũ (web view tạm gỡ ra cho bảng đè lên, trang không bị co giãn)
+mt.on('ui:freeze', (f) => {
+  const im = $('frozen');
+  if (!f) { im.classList.add('hidden'); im.removeAttribute('src'); return; }
+  const b = f.bounds; Object.assign(im.style, { left: b.x + 'px', top: b.y + 'px', width: b.width + 'px', height: b.height + 'px' });
+  im.src = f.src; im.classList.remove('hidden');
+});
 mt.on('ui:event', () => { if (panel === 'feed') renderFeed(); });
 mt.on('ui:viewState', (v) => { if (v.profileId === cur.profileId) $('webHint').textContent = 'Đang tải…'; });
 mt.on('git:task', (t) => { logId = t.id; const st = $('g_state'); if (st) { st.className = 'badge'; st.textContent = 'đang chạy…'; } });

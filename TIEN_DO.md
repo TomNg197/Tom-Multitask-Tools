@@ -4,7 +4,7 @@ Sếp duyệt hướng B (tin 1543, 08/10 00:41 giờ VN): một app Electron ch
 
 ## Thiết kế
 - **Hồ sơ** (profile) gồm: tab Slack (partition `persist:p-<id>`), tab Google (Drive/Gmail, dùng chung partition), tab Git (tài khoản PAT và các cặp).
-- **Thông báo:** preload-slack chèn hook vào main world bằng webFrame.executeJavaScript, chuyển qua postMessage có nonce, preload gửi ipc lên main. Main hiện Notification thật của hệ điều hành, bấm vào thì nhảy đúng hồ sơ.
+- **Thông báo:** preload-web (2.7.0: trước là preload-slack, nay dùng cho Slack/Gmail/Trello/Discord) chèn hook vào main world bằng webFrame.executeJavaScript, chuyển qua postMessage có nonce, preload gửi ipc lên main. Main hiện Notification thật của hệ điều hành, bấm vào thì nhảy đúng hồ sơ.
 - **Badge:** đọc page-title-updated. Mac dùng app.setBadgeCount; Windows dùng overlay icon và tooltip tray.
 - **Khay hệ thống:** đóng cửa sổ thì ẩn xuống khay. Dùng single instance lock. Lúc before-quit gọi session.flushStorageData() để chống văng đăng nhập.
 - **User agent:** UA Chrome bỏ đi phần token Electron/MetaTools.
@@ -62,3 +62,11 @@ Sếp duyệt hướng B (tin 1543, 08/10 00:41 giờ VN): một app Electron ch
 ## Build lại
 `npx @electron/packager . MetaTools --platform=win32 --arch=x64 --out=dist --asar --ignore='^/test' --ignore='^/dist' ...`
 Bản darwin thêm `--arch=arm64,x64 --icon=assets/icon.icns --app-bundle-id=vn.metax.metatools`, sau đó ký `rcodesign sign MetaTools.app`.
+
+## 2.7.0 (26/10)
+- Số tin + báo tin riêng từng app (Slack/Gmail/Trello/Discord) mỗi hồ sơ: `unread[pid][kind]`, event có `k`, `badgeTable()` gửi UI; `notifyOn(p, kind)` + `p.notifyApps`.
+- Gmail đọc feed Atom (`/mail/u/<gmail>/feed/atom`) bằng `session.fetch` của hồ sơ, mỗi 60 s; lần đầu chỉ ghi nhớ, không báo dồn.
+- Bảng Hồ sơ: `app:peek` chụp ảnh web view → UI hiện `#frozen` → gỡ view; đóng thì gắn lại (không đổi bounds).
+- Link lạ → tab `web` của hồ sơ (routeLink); forms.gle/goo.gl coi là Google.
+- Test: `METATOOLS_27_SELFTEST=<dir> METATOOLS_GMAIL_FEED=http://127.0.0.1:39177/{gmail} METATOOLS_GMAIL_POLL_MS=3600000 elx.sh .` → 19/19; selftest 32/32; IME 8/8; unit 64/64 + projsync 7/7.
+- Chưa test được trên máy thật: feed Gmail với tài khoản Google thật, Trello có bắn Notification hay không (phải bật thông báo desktop trong Trello).
