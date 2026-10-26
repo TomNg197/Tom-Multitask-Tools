@@ -118,6 +118,7 @@ function layout(focusView) {
     }
   }
   if (!want) return;
+  seen(p.id, current.tab);
   if (!cv.children.includes(want)) cv.addChildView(want);
   want.setBounds(contentBounds());
   if (focusView) want.webContents.focus();   // the user picked this profile / tab: typing goes straight there
@@ -152,7 +153,8 @@ function notifyOn(p, kind) {
   if (!p || p.notify === false || !NOTIFY_KINDS.includes(kind)) return false;
   const a = p.notifyApps || {};
   if (typeof a[kind] === 'boolean') return a[kind];
-  return kind === 'slack' || (kind === 'google' && !!p.gmail) || (kind === 'trello' && !!p.trelloUrl) || (kind === 'discord' && !!p.discordUrl);
+  // 2.7.1: Trello/Discord chạy ngầm tốn 150–300 MB mỗi cái → mặc định tắt, chỉ chạy ngầm khi sếp tick. Gmail đọc feed, gần như không tốn RAM.
+  return kind === 'slack' || (kind === 'google' && !!p.gmail);
 }
 
 function googleHome(p) {
@@ -213,9 +215,43 @@ function ensureView(p, kind) {
         .then((r) => { if (r && r.s && r.s.trim()) doTranslate(p, wc, r.s, 'en', r.ed); }).catch(() => {});
     }
   });
-  wc.loadURL(homeOf(p, kind));
+  const back = slept[p.id] && slept[p.id][kind];
+  if (back) delete slept[p.id][kind];
+  wc.loadURL(back || homeOf(p, kind));
   views[p.id][kind] = v;
+  seen(p.id, kind);
   return v;
+}
+
+// ------------------------------------------------------------------ ngủ app không dùng (2.7.1)
+// Mỗi app web là một trình duyệt riêng (150–300 MB). App nào không hiện trên màn hình quá N phút, không bật báo tin và không
+// đang phát tiếng (gọi thoại/huddle) thì đóng hẳn; bấm vào lại thì mở lại đúng trang cũ. N = Cài đặt → "Ngủ app" (0 = tắt).
+const lastSeen = {};   // profileId -> { kind: ms }
+const slept = {};      // profileId -> { kind: url lúc ngủ }
+function seen(pid, kind) { (lastSeen[pid] = lastSeen[pid] || {})[kind] = Date.now(); }
+function sleepMinutes() { const m = store.cfg.settings.sleepMin; return typeof m === 'number' ? m : 10; }
+function sleepIdle(now = Date.now()) {
+  const min = sleepMinutes(); if (!min) return [];
+  const cv = win && win.contentView; const done = [];
+  for (const pid of Object.keys(views)) {
+    const p = profile(pid); if (!p) continue;
+    for (const k of WEB_KINDS) {
+      const v = views[pid][k]; if (!v) continue;
+      if (cv && cv.children.includes(v)) continue;                       // đang hiện
+      if (current.profileId === pid && current.tab === k) continue;      // đang chọn (vd bảng hồ sơ đang mở đè lên)
+      if (k !== 'google' && notifyOn(p, k)) continue;                    // app báo tin phải chạy ngầm (Gmail báo tin bằng feed nên ngủ được)
+      if (now - ((lastSeen[pid] || {})[k] || 0) < min * 60000) continue;
+      const wc = v.webContents;
+      if (wc.isCurrentlyAudible()) continue;                             // đang gọi / phát nhạc
+      const url = wc.getURL();
+      (slept[pid] = slept[pid] || {})[k] = url && url !== 'about:blank' ? url : '';
+      delete views[pid][k]; wc.close();
+      if (k === 'slack' || k === 'discord') { const u = unread[pid]; if (u) delete u[k]; }   // ngủ rồi thì số trên tiêu đề không còn đúng
+      done.push(`${pid}:${k}`);
+    }
+  }
+  if (done.length) refreshBadge();
+  return done;
 }
 
 function popupInProfile(p) {
@@ -493,7 +529,7 @@ function publicState() {
     version: BOOT.version, shellVersion: BOOT.shellVersion, platform: process.platform,
     profiles: store.cfg.profiles, projects: store.cfg.projects, projSync: store.cfg.projSync, current, badges: badgeTable(),
     news: Object.fromEntries(store.cfg.profiles.map((p) => [p.id, newCount(p.id)])),
-    settings: { openAtLogin: app.getLoginItemSettings().openAtLogin, autoUpdate: store.cfg.settings.autoUpdate !== false },
+    settings: { openAtLogin: app.getLoginItemSettings().openAtLogin, autoUpdate: store.cfg.settings.autoUpdate !== false, sleepMin: sleepMinutes() },
     update: updPublic(),
   };
 }
@@ -638,6 +674,7 @@ const handlers = {
     sendUI('ui:select', ev.p); sendUI('ui:tab', k); layout(); refreshBadge();
     return true;
   },
+  'app:setSleep': (a) => { const m = Math.max(0, Math.min(240, Math.round(Number(a && a.min) || 0))); store.cfg.settings.sleepMin = m; store.save(); return m; },
   'app:setLogin': (a) => { app.setLoginItemSettings({ openAtLogin: !!a.on, openAsHidden: true, args: ['--hidden'] }); return app.getLoginItemSettings().openAtLogin; },
   'app:export': async () => {
     const r = await dialog.showSaveDialog(win, { defaultPath: 'metatools_ho_so.json', filters: [{ name: 'JSON', extensions: ['json'] }] });
@@ -937,7 +974,7 @@ app.whenReady().then(() => {
   if (process.env.METATOOLS_SELFTEST) require('./test/selftest')({ win, handlers, store, views, events, layout, ensureView, routeLink, current: () => current });
   if (process.env.METATOOLS_UPDATE_SELFTEST) require('./test/selftest-update')({ win, handlers, store, upd, BOOT, confirmStart });
   if (process.env.METATOOLS_UI_SELFTEST) require('./test/selftest-ui')({ win, handlers, store, views });
-  if (process.env.METATOOLS_27_SELFTEST) require('./test/selftest-27')({ win, handlers, store, views, events, ensureView, routeLink, gmailPollAll, current: () => current, ui: (js) => win.webContents.executeJavaScript(js, true) });
+  if (process.env.METATOOLS_27_SELFTEST) require('./test/selftest-27')({ win, handlers, store, views, events, ensureView, routeLink, gmailPollAll, sleepIdle, current: () => current, ui: (js) => win.webContents.executeJavaScript(js, true) });
   if (process.env.METATOOLS_IME_SELFTEST) require('./test/selftest-ime')({ win, handlers, store, layout, ensureView, refreshBadge, ui: (js) => win.webContents.executeJavaScript(js, true) });
   // automatic update check: 30 s after start, then hourly (each check itself waits 6 h since the last one)
   setTimeout(autoCheck, 30000);
@@ -948,6 +985,7 @@ app.whenReady().then(() => {
     gmailPollAll();
   }, 1500);
   setInterval(gmailPollAll, Number(process.env.METATOOLS_GMAIL_POLL_MS) || 60000);
+  setInterval(sleepIdle, 60000);
 });
 
 app.on('activate', () => showWindow());

@@ -28,7 +28,7 @@ module.exports = async function selftest(ctx) {
     ctx.win.show();
     await new Promise((r) => (ctx.win.webContents.isLoading() ? ctx.win.webContents.once('did-finish-load', r) : r()));
     await wait(1000);
-    const p1 = await call('prof:save', { name: 'MetaX', gmail: 'a@metax.vn', discordUrl: 'https://discord.com/channels/@me', notifyApps: { trello: true } });
+    const p1 = await call('prof:save', { name: 'MetaX', gmail: 'a@metax.vn', discordUrl: 'https://discord.com/channels/@me', notifyApps: { trello: true, discord: true } });
     const p2 = await call('prof:save', { name: 'Khách B', notifyApps: { slack: false } });
     chk('lưu bật/tắt báo tin từng app', p1.notifyApps.trello === true && p2.notifyApps.slack === false && !('google' in p1.notifyApps), JSON.stringify([p1.notifyApps, p2.notifyApps]));
     chk('app được bật báo tin chạy ngầm ngay', await until(() => ctx.views[p1.id] && ctx.views[p1.id].discord && ctx.views[p1.id].trello && ctx.views[p1.id].slack), Object.keys(ctx.views[p1.id] || {}).join(','));
@@ -82,6 +82,23 @@ module.exports = async function selftest(ctx) {
     chk('link web bất kỳ → tab Web trong app (không ra trình duyệt ngoài)', r1.action === 'deny' && ctx.current().tab === 'web' && await until(() => /example\.com/.test(ctx.views[p1.id].web.webContents.getURL())), ctx.views[p1.id].web && ctx.views[p1.id].web.webContents.getURL());
     ctx.routeLink(p1, 'https://forms.gle/abc123', 'discord');
     chk('link Google Form rút gọn → tab Google', ctx.current().tab === 'google');
+
+    // ---- 2.7.1: mặc định không chạy ngầm Trello/Discord; ngủ app không dùng
+    const p3 = await call('prof:save', { name: 'Có link Discord', discordUrl: 'https://discord.com/channels/@me', trelloUrl: 'https://trello.com/' });
+    await wait(1500);
+    chk('2.7.1: có link Discord/Trello nhưng chưa tick → không chạy ngầm', !(ctx.views[p3.id] && (ctx.views[p3.id].discord || ctx.views[p3.id].trello)), Object.keys(ctx.views[p3.id] || {}).join(','));
+    await call('app:setSleep', { min: 1 });
+    const tv = ctx.ensureView(p3, 'trello'); await until(() => /trello\.com/.test(tv.webContents.getURL()), 15000);
+    const tUrl = tv.webContents.getURL();
+    const gone = ctx.sleepIdle(Date.now() + 2 * 60000);
+    chk('app không bật báo tin, không mở quá hạn → ngủ', !ctx.views[p3.id].trello && gone.includes(p3.id + ':trello'), gone.join(','));
+    chk('app bật báo tin (Slack/Trello/Discord của MetaX) không ngủ', ctx.views[p1.id].slack && ctx.views[p1.id].discord && ctx.views[p1.id].trello);
+    chk('app đang hiện không ngủ', ctx.win.contentView.children.some((c) => Object.values(ctx.views).some((vs) => Object.values(vs).includes(c))));
+    const tv2 = ctx.ensureView(p3, 'trello'); await until(() => tv2.webContents.getURL() !== '', 15000);
+    chk('mở lại app đã ngủ → về đúng trang cũ', tv2.webContents.getURL() === tUrl || /trello\.com/.test(tv2.webContents.getURL()), tv2.webContents.getURL() + ' vs ' + tUrl);
+    await call('app:setSleep', { min: 0 });
+    ctx.ensureView(p3, 'google');
+    chk('Không ngủ = 0 → không tắt gì', ctx.sleepIdle(Date.now() + 999 * 60000).length === 0);
 
     // ---- bấm tin trong Tin mới → mở đúng app
     const ev = ctx.events.find((e) => e.k === 'trello');

@@ -1,5 +1,9 @@
 ## Tom Multitask 2.7 (trước đây là MetaTools)
 
+**Mới ở bản 2.7.1 (đỡ RAM):**
+- **Ngủ app không dùng:** app web nào không mở quá 10 phút (Cài đặt → "Ngủ app không dùng sau", chọn 5 phút…1 giờ hoặc Không ngủ), không bật báo tin và không đang gọi/phát tiếng sẽ tắt hẳn; bấm vào lại thì mở lại đúng trang cũ (2–4 giây).
+- **Mặc định chỉ Slack chạy ngầm:** Trello và Discord chỉ chạy ngầm khi tick báo tin trong Sửa hồ sơ (bản 2.7.0 tự bật khi hồ sơ có link). Gmail vẫn báo thư qua feed, gần như không tốn RAM.
+
 **Mới ở bản 2.7.0:**
 - **Thông báo riêng từng app của mỗi hồ sơ:** Slack, Gmail, Trello, Discord đều có số tin chưa đọc riêng: hiện trên nút tab của app, dưới tên hồ sơ trong bảng Hồ sơ (vd "Gmail 3 · Discord 1") và cộng vào icon app. Thông báo hệ điều hành ghi rõ "Hồ sơ · App · tiêu đề", bấm vào mở đúng hồ sơ và đúng app. Mở app nào thì số của app đó về 0.
 - **Bật/tắt báo tin từng app:** Sửa hồ sơ → tick Slack / Gmail / Trello / Discord. App được bật sẽ chạy ngầm để nhận tin (tốn thêm RAM). Mặc định: Slack bật; Gmail/Trello/Discord bật nếu hồ sơ đã điền Gmail/link tương ứng.

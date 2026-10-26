@@ -70,3 +70,8 @@ Bản darwin thêm `--arch=arm64,x64 --icon=assets/icon.icns --app-bundle-id=vn.
 - Link lạ → tab `web` của hồ sơ (routeLink); forms.gle/goo.gl coi là Google.
 - Test: `METATOOLS_27_SELFTEST=<dir> METATOOLS_GMAIL_FEED=http://127.0.0.1:39177/{gmail} METATOOLS_GMAIL_POLL_MS=3600000 elx.sh .` → 19/19; selftest 32/32; IME 8/8; unit 64/64 + projsync 7/7.
 - Chưa test được trên máy thật: feed Gmail với tài khoản Google thật, Trello có bắn Notification hay không (phải bật thông báo desktop trong Trello).
+
+## 2.7.1 (26/10) — đỡ RAM (sếp: 1,4 GB / 11 tiến trình)
+- `sleepIdle()` mỗi 60 s: view không hiện quá `settings.sleepMin` phút (mặc định 10, 0 = tắt), không `notifyOn` (Google luôn ngủ được vì Gmail dùng feed), không `isCurrentlyAudible` → `wc.close()`, nhớ URL trong `slept[pid][kind]`; `ensureView` mở lại đúng URL. `lastSeen` cập nhật trong `layout()` + `ensureView`.
+- `notifyOn` mặc định: Slack + Gmail (nếu có Gmail); Trello/Discord phải tick.
+- selftest-27 25/25 (thêm 6 bài ngủ app + mặc định).

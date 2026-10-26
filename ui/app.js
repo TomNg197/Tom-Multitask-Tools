@@ -147,11 +147,11 @@ function segVal(id) { const on = document.querySelector(`#${id} button.on`); ret
 function seg(id, opts, val) { return `<div class="seg" id="${id}">${opts.map(([v, l]) => `<button type="button" data-v="${v}" class="${v === val ? 'on' : ''}">${l}</button>`).join('')}</div>`; }
 
 // ------------------------------------------------------------------ profile form
-// giống notifyOn() bên main: chưa chỉnh lần nào thì Slack bật, app khác bật khi hồ sơ đã điền link/Gmail của app đó
+// giống notifyOn() bên main: chưa chỉnh lần nào thì Slack bật, Gmail bật khi có Gmail; Trello/Discord phải tick (2.7.1, đỡ RAM)
 function notifyDefault(p, k) {
   const a = p.notifyApps || {};
   if (typeof a[k] === 'boolean') return a[k];
-  return k === 'slack' || (k === 'google' && !!p.gmail) || (k === 'trello' && !!p.trelloUrl) || (k === 'discord' && !!p.discordUrl);
+  return k === 'slack' || (k === 'google' && !!p.gmail);
 }
 function profileForm(p) {
   p = p || { color: COLORS[(S.profiles.length) % COLORS.length], notify: true };
@@ -167,7 +167,7 @@ function profileForm(p) {
   <label>Màu (khi không có logo)</label>${colorPicker('f_color', p.color)}
   <label style="display:flex;gap:8px;align-items:center;color:var(--ink)"><input type="checkbox" id="f_notify" style="width:auto" ${p.notify !== false ? 'checked' : ''}> Báo tin mới (chạy ngầm cả khi đóng cửa sổ)</label>
   <div class="napps" id="f_napps">${APPS.map(([k, label]) => `<label><input type="checkbox" class="f_napp" value="${k}" ${notifyDefault(p, k) ? 'checked' : ''}> ${label}</label>`).join('')}</div>
-  <div class="mute small">Bật app nào thì app đó chạy ngầm và hiện thông báo riêng (tốn thêm RAM mỗi app). Gmail chỉ đọc số thư mới, không phải mở Gmail.</div>
+  <div class="mute small">Slack, Trello, Discord được tick sẽ chạy ngầm để báo tin (mỗi app ~150–300 MB RAM). Gmail chỉ đọc số thư mới qua feed, gần như không tốn RAM.</div>
   <div class="row" style="margin-top:16px">${p.id ? '<button class="err" id="f_del">Xoá hồ sơ</button>' : ''}<span class="grow"></span><button id="f_cancel">Huỷ</button><button class="pri" id="f_save">Lưu</button></div>`);
   let logo = p.logo || '';
   const showLogo = () => { setAvatar($('f_logoPrev'), { name: $('f_name').value || p.name || '?', color: pickedColor('f_color') || p.color, logo }); $('f_logoDel').classList.toggle('hidden', !logo); };
@@ -205,12 +205,16 @@ async function renderFeed() {
 function renderSettings() {
   $('pSet').innerHTML = `<div class="card"><h2>Cài đặt</h2>
   <label style="display:flex;gap:8px;align-items:center;color:var(--ink)"><input type="checkbox" id="s_login" style="width:auto" ${S.settings.openAtLogin ? 'checked' : ''}> Tự chạy ngầm khi mở máy (để không lỡ tin)</label>
+  <label style="display:flex;gap:8px;align-items:center;color:var(--ink);margin-top:10px">Ngủ app không dùng sau
+    <select id="s_sleep" style="width:auto">${[[0, 'Không ngủ'], [5, '5 phút'], [10, '10 phút'], [20, '20 phút'], [30, '30 phút'], [60, '1 giờ']].map(([v, l]) => `<option value="${v}" ${S.settings.sleepMin === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
+  <div class="mute small">Đỡ RAM: app không mở quá thời gian này và không bật báo tin sẽ tắt hẳn, bấm vào lại thì mở lại đúng trang cũ (mất 2–4 giây).</div>
   <div class="row" style="margin-top:14px"><button id="s_export">Xuất danh sách hồ sơ</button><button id="s_import">Nhập danh sách hồ sơ</button></div>
   <div class="mute small" style="margin-top:6px">Dùng để chuyển sang máy Mac/Windows khác. File chỉ có tên, workspace, Gmail, nick và cặp Git; <b>không có</b> token, SSH key hay phiên đăng nhập (mỗi máy đăng nhập/nhập token lại 1 lần).</div>
   <div class="row" style="margin-top:18px"><button class="err" id="s_quit">Thoát hẳn Tom Multitask</button><span class="mute small">Đóng cửa sổ thì app vẫn chạy ở khay để nhận tin.</span></div>
   <div class="brandRow"><img src="logo.svg" alt="" width="40" height="40"><div><b>Tom Multitask</b><div class="mute small">${esc(S.version)} · ${esc(S.platform)}</div></div></div></div>
   <div class="card" id="updCard"></div>`;
   $('s_login').onchange = async (e) => { await call('app:setLogin', { on: e.target.checked }); await refresh(); };
+  $('s_sleep').onchange = async (e) => { await call('app:setSleep', { min: +e.target.value }); toast('Đã lưu'); await refresh(); };
   $('s_export').onclick = async () => { const f = await call('app:export'); if (f) toast('Đã lưu ' + f); };
   $('s_import').onclick = async () => { const r = await call('app:import'); if (r) { toast(`Đã nhập: thêm ${r.added}, cập nhật ${r.updated}`); await refresh(); } };
   $('s_quit').onclick = () => call('app:quit');
