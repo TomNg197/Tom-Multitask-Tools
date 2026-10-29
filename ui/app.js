@@ -294,6 +294,8 @@ async function renderGit() {
   const accs = GS.accounts.filter((a) => a.profileId === pid);
   const others = GS.accounts.filter((a) => a.profileId !== pid);
   const pairs = GS.pairs.filter((x) => x.profileId === pid);
+  const gp = (GS.profilePairs && GS.profilePairs[pid]) || {}; const hasGp = !!(gp.srcAcc && gp.dstAcc);
+  const accOpts = (sel) => GS.accounts.map((a) => { const pr = prof(a.profileId); return `<option value="${a.id}" ${a.id === sel ? 'selected' : ''}>${esc(a.label)} (${esc(a.host)} / ${esc(a.user)})${pr && pr.id !== pid ? ' · ' + esc(pr.name) : ''}</option>`; }).join('');
   const busy = GS.task && !GS.task.done;
   $('pGit').innerHTML = `${GS.gitVersion ? '' : '<div class="warnbox">Máy chưa có <b>Git</b>. Mac: chạy <span class="mono">xcode-select --install</span>. Windows: cài Git for Windows (git-scm.com) rồi mở lại app.</div>'}
   <div class="grid2"><div>
@@ -306,15 +308,24 @@ async function renderGit() {
     ${others.length ? `<div class="mute small" style="margin-top:8px">Nick ở hồ sơ khác vẫn chọn được khi tạo cặp (${others.length} nick).</div>` : ''}</div>
     <div class="card"><h2>Nhật ký <span class="badge ${GS.task ? (GS.task.done ? (GS.task.ok ? 'b-ok' : 'b-err') : '') : ''}" id="g_state">${GS.task ? (GS.task.done ? (GS.task.ok ? 'xong' : 'lỗi') : 'đang chạy…') : 'chưa chạy'}</span><span class="grow"></span><button class="sm" id="g_clearLog">Xoá</button></h2><div id="log"></div></div>
   </div><div>
-    <div class="card"><h2>Cặp pull → push <span class="grow"></span><button class="pri sm" id="g_addPair" ${GS.accounts.length < 2 ? 'disabled title="Cần ít nhất 2 nick"' : ''}>+ Thêm cặp</button></h2>
-    ${pairs.length ? pairs.map((p) => { const l = p.last || {}; const pr = GS.prepared[p.id]; return `<div class="pair"><div class="row"><span class="chip" style="background:${esc(p.color)}"></span><b>${esc(p.name)}</b><span class="grow"></span>
-      <button class="sm" data-pull="${p.id}" ${busy ? 'disabled' : ''}>Pull</button><button class="sm pri" data-prep="${p.id}" ${busy ? 'disabled' : ''}>Pull + Push</button>${pr && !pr.noChange ? `<button class="sm ok" data-review="${p.id}">Xem & đẩy</button>` : ''}<button class="sm" data-editpair="${p.id}">Sửa</button></div>
-      <div class="flow"><div class="side"><div>${accLabel(p.srcAcc)}</div><div class="mono">${esc(p.srcUrl)}</div></div><div class="arrow">➜</div><div class="side"><div>${accLabel(p.dstAcc)}</div><div class="mono">${esc(p.dstUrl)}</div></div></div>
-      <div class="small mute">${branchDesc(p)} · commit "${esc(p.message)}"</div>
-      <div class="small mute">${l.sha ? `Pull gần nhất: <b>${esc(l.branch)}</b> @ ${esc(l.sha.slice(0, 8))} (${new Date(l.pulledAt).toLocaleString()})` : 'Chưa pull lần nào.'}${l.pushedAt ? ` · Đẩy gần nhất ${new Date(l.pushedAt).toLocaleString()}${l.pushedSha && l.sha && l.pushedSha !== l.sha ? ' · <b style="color:var(--warn)">nguồn có code mới chưa đẩy</b>' : ''}` : ''}</div></div>`; }).join('') : '<div class="mute">Chưa có cặp. Một cặp = nick nguồn pull về → nick đích đẩy lên thành 1 commit (không mang lịch sử, tên, email cá nhân).</div>'}</div>
+    <div class="card"><h2>Cặp nick của hồ sơ</h2>
+      <div class="row"><div class="grow"><label>Nick nguồn (pull về)</label><select id="g_srcAcc"><option value="">— chọn —</option>${accOpts(gp.srcAcc)}</select></div><div class="arrow" style="align-self:flex-end;padding:0 6px 8px">➜</div>
+      <div class="grow"><label>Nick đích (push lên, đứng tên commit)</label><select id="g_dstAcc"><option value="">— chọn —</option>${accOpts(gp.dstAcc)}</select></div></div>
+      <div class="row" style="margin-top:8px"><span class="mute small grow">Mọi dự án của hồ sơ dùng cặp nick này. Commit đẩy lên chỉ đứng tên nick đích, không mang nhánh, mã commit, tên hay email nick nguồn.</span><button class="sm pri" id="g_savePair">Lưu cặp nick</button></div></div>
+    <div class="card"><h2>Dự án (${pairs.length}) <span class="grow"></span><button class="pri sm" id="g_addPair" ${hasGp ? '' : 'disabled title="Chọn và lưu cặp nick trước"'}>+ Thêm dự án</button></h2>
+    ${pairs.length ? pairs.map((p) => { const l = p.last || {}; const pr = GS.prepared[p.id]; const off = hasGp && (p.srcAcc !== gp.srcAcc || p.dstAcc !== gp.dstAcc); const h = p.history || []; return `<div class="pair"><div class="row"><span class="chip" style="background:${esc(p.color)}"></span><b>${esc(p.name)}</b>${off ? '<span class="badge b-err" title="Dự án này đang dùng nick khác với cặp nick của hồ sơ. Bấm Lưu cặp nick để áp dụng cho mọi dự án.">nick khác cặp</span>' : ''}<span class="grow"></span>
+      <button class="sm" data-pull="${p.id}" ${busy ? 'disabled' : ''}>Pull</button><button class="sm pri" data-prep="${p.id}" ${busy ? 'disabled' : ''}>Pull + Push</button>${pr && !pr.noChange ? `<button class="sm ok" data-review="${p.id}">Xem & đẩy</button>` : ''}<button class="sm" data-hist="${p.id}">Lịch sử (${h.length})</button><button class="sm" data-editpair="${p.id}">Sửa</button></div>
+      <div class="flow"><div class="side"><div class="mono">${esc(p.srcUrl)}</div></div><div class="arrow">➜</div><div class="side"><div class="mono">${esc(p.dstUrl)}</div></div></div>
+      <div class="small mute">${branchDesc(p)} · mẫu commit "${esc(p.message)}"</div>
+      <div class="small mute">${l.sha ? `Pull gần nhất: <b>${esc(l.branch)}</b> @ ${esc(l.sha.slice(0, 8))} (${new Date(l.pulledAt).toLocaleString()})` : 'Chưa pull lần nào.'}${h[0] ? ` · Đẩy gần nhất ${new Date(h[0].at).toLocaleString()}: "${esc(h[0].message.split('\n')[0].slice(0, 60))}"` : (l.pushedAt ? ` · Đẩy gần nhất ${new Date(l.pushedAt).toLocaleString()}` : '')}${l.pushedSha && l.sha && l.pushedSha !== l.sha ? ' · <b style="color:var(--warn)">nguồn có code mới chưa đẩy</b>' : ''}</div></div>`; }).join('') : `<div class="mute">${hasGp ? 'Chưa có dự án. Mỗi dự án = 1 repo nguồn + 1 repo đích, pull/push bằng cặp nick ở trên.' : 'Chọn cặp nick nguồn → đích ở trên, rồi thêm dự án.'}</div>`}</div>
   </div></div>`;
   $('g_addAcc').onclick = () => accountForm(null);
   $('g_addPair').onclick = () => pairForm(null);
+  $('g_savePair').onclick = async () => {
+    const r = await call('git:saveProfilePair', { profileId: pid, srcAcc: $('g_srcAcc').value, dstAcc: $('g_dstAcc').value });
+    toast(r.moved ? `Đã lưu cặp nick, áp dụng cho ${r.moved} dự án` : 'Đã lưu cặp nick'); renderGit();
+  };
+  document.querySelectorAll('[data-hist]').forEach((b) => { b.onclick = () => showHistory(GS.pairs.find((a) => a.id === b.dataset.hist)); });
   $('g_clearLog').onclick = async () => { await call('git:clearLog'); $('log').innerHTML = ''; };
   document.querySelectorAll('[data-verify]').forEach((b) => { b.onclick = async () => { b.disabled = true; const r = await call('git:verify', { id: b.dataset.verify }); toast(r.ok ? `Đúng nick: ${r.who}` : r.msg, !r.ok); renderGit(); }; });
   document.querySelectorAll('[data-editacc]').forEach((b) => { b.onclick = () => accountForm(GS.accounts.find((a) => a.id === b.dataset.editacc)); });
@@ -366,32 +377,32 @@ function accountForm(a) {
 }
 
 function pairForm(p) {
-  p = p || { srcMode: 'newest', dstMode: 'same', message: 'Sync {branch} @ {sha}', color: COLORS[5], profileId: cur.profileId };
+  p = p || { srcMode: 'newest', dstMode: 'same', message: 'Cập nhật {branch} {date}', color: COLORS[5], profileId: cur.profileId };
+  const gp = (GS.profilePairs && GS.profilePairs[p.profileId || cur.profileId]) || {};
   const opts = (sel) => GS.accounts.map((a) => { const pr = prof(a.profileId); return `<option value="${a.id}" ${a.id === sel ? 'selected' : ''}>${esc(a.label)} (${esc(a.host)} / ${esc(a.user)})${pr && pr.id !== cur.profileId ? ' · ' + esc(pr.name) : ''}</option>`; }).join('');
-  openModal(`<h3>${p.id ? 'Sửa cặp' : 'Cặp mới'}</h3>
-  <label>Tên cặp</label><input id="p_name" value="${esc(p.name || '')}" placeholder="Game A → repo công ty">
+  openModal(`<h3>${p.id ? 'Sửa dự án' : 'Dự án mới'}</h3>
+  <div class="mute small">Pull/push bằng cặp nick của hồ sơ: <b>${accLabel(gp.srcAcc)}</b> ➜ <b>${accLabel(gp.dstAcc)}</b></div>
+  <label>Tên dự án</label><input id="p_name" value="${esc(p.name || '')}" placeholder="Screw Bubble → repo công ty">
   <label>Trello (tuỳ chọn: link bảng hoặc workspace mở sẵn)</label><input id="f_trello" value="${esc(p.trelloUrl || '')}" placeholder="https://trello.com/w/tencongty (để trống = trang chủ Trello)">
   <label>Màu</label>${colorPicker('p_color', p.color)}
   <div class="card" style="margin-top:12px"><h2>Nguồn (pull về)</h2>
-    <label>Nick nguồn</label><select id="p_srcAcc"><option value="">— chọn —</option>${opts(p.srcAcc)}</select>
     <label>Repo nguồn</label><input id="p_srcUrl" value="${esc(p.srcUrl || '')}" placeholder="https://github.com/ten/repo hoặc git@github.com:ten/repo.git">
     <label>Lấy nhánh nào</label>${seg('p_srcMode', [['newest', 'Mới nhất (tự động)'], ['fixed', 'Cố định'], ['pattern', 'Mới nhất theo mẫu']], p.srcMode)}
     <input id="p_srcBranch" value="${esc(p.srcBranch || '')}" placeholder="main  hoặc  release/*" style="margin-top:6px"></div>
   <div class="card"><h2>Đích (push lên)</h2>
-    <label>Nick đích</label><select id="p_dstAcc"><option value="">— chọn —</option>${opts(p.dstAcc)}</select>
     <label>Repo đích</label><input id="p_dstUrl" value="${esc(p.dstUrl || '')}" placeholder="https://gitlab.congty.vn/team/repo">
     <label>Đẩy vào nhánh</label>${seg('p_dstMode', [['same', 'Trùng tên nhánh nguồn'], ['fixed', 'Nhánh cố định'], ['prefix', 'Thêm tiền tố']], p.dstMode)}
     <input id="p_dstBranch" value="${esc(p.dstBranch || '')}" placeholder="main  hoặc tiền tố  sync/" style="margin-top:6px">
-    <label>Nội dung commit</label><input id="p_msg" value="${esc(p.message || '')}"><div class="mute small">Biến: {branch} = nhánh nguồn, {sha} = mã commit nguồn, {date} = ngày commit nguồn.</div></div>
-  <div class="row" style="margin-top:12px">${p.id ? '<button class="err" id="p_del">Xoá cặp</button>' : ''}<span class="grow"></span><button id="p_cancel">Huỷ</button><button class="pri" id="p_save">Lưu</button></div>`);
+    <label>Nội dung commit</label><input id="p_msg" value="${esc(p.message || '')}"><div class="mute small">Mẫu điền sẵn khi đẩy (vẫn sửa được ở bước xác nhận). Biến: {branch} = nhánh đích, {date} = ngày đẩy. Không có biến nào lấy thông tin nguồn.</div></div>
+  <div class="row" style="margin-top:12px">${p.id ? '<button class="err" id="p_del">Xoá dự án</button>' : ''}<span class="grow"></span><button id="p_cancel">Huỷ</button><button class="pri" id="p_save">Lưu</button></div>`);
   const upd = () => { $('p_srcBranch').classList.toggle('hidden', segVal('p_srcMode') === 'newest'); $('p_dstBranch').classList.toggle('hidden', segVal('p_dstMode') === 'same'); };
   $('p_srcMode').addEventListener('change', upd); $('p_dstMode').addEventListener('change', upd); upd();
   $('p_cancel').onclick = closeModal;
   $('p_save').onclick = async () => {
-    await call('git:savePair', { id: p.id, profileId: p.profileId || cur.profileId, name: $('p_name').value, color: pickedColor('p_color'), srcAcc: $('p_srcAcc').value, srcUrl: $('p_srcUrl').value, srcMode: segVal('p_srcMode'), srcBranch: $('p_srcBranch').value, dstAcc: $('p_dstAcc').value, dstUrl: $('p_dstUrl').value, dstMode: segVal('p_dstMode'), dstBranch: $('p_dstBranch').value, message: $('p_msg').value });
-    closeModal(); toast('Đã lưu cặp'); renderGit();
+    await call('git:savePair', { id: p.id, profileId: p.profileId || cur.profileId, name: $('p_name').value, color: pickedColor('p_color'), srcAcc: gp.srcAcc, srcUrl: $('p_srcUrl').value, srcMode: segVal('p_srcMode'), srcBranch: $('p_srcBranch').value, dstAcc: gp.dstAcc, dstUrl: $('p_dstUrl').value, dstMode: segVal('p_dstMode'), dstBranch: $('p_dstBranch').value, message: $('p_msg').value });
+    closeModal(); toast('Đã lưu dự án'); renderGit();
   };
-  if (p.id) $('p_del').onclick = async () => { if (!confirm(`Xoá cặp "${p.name}"?`)) return; await call('git:deletePair', { id: p.id }); closeModal(); renderGit(); };
+  if (p.id) $('p_del').onclick = async () => { if (!confirm(`Xoá dự án "${p.name}"?`)) return; await call('git:deletePair', { id: p.id }); closeModal(); renderGit(); };
 }
 
 function showConfirm(pr) {
@@ -405,7 +416,7 @@ function showConfirm(pr) {
   <div>Thay đổi</div><div><b>${esc(pr.stat || '—')}</b> (${pr.fileCount} file)</div></div>
   ${pr.noChange ? '' : `<label>Nội dung commit (sửa được trước khi đẩy)</label><textarea id="c_msg" rows="3" spellcheck="false">${esc(pr.message)}</textarea>`}
   ${pr.lfs ? '<div class="warnbox">Repo nguồn dùng Git LFS: chỉ chép file con trỏ LFS, file lớn sẽ không có trên repo đích.</div>' : ''}
-  <div class="mute small">Không mang lịch sử commit, tên hay email cá nhân sang. Toàn bộ file trên nhánh đích được thay bằng code nguồn. Không bao giờ ghi đè (force push).</div>
+  <div class="mute small">Commit chỉ đứng tên nick đích, không mang lịch sử, nhánh, mã commit, tên hay email nick nguồn. Nội dung commit có dấu vết nguồn sẽ bị chặn. Toàn bộ file trên nhánh đích được thay bằng code nguồn. Không bao giờ ghi đè (force push).</div>
   ${pr.files && pr.files.length ? `<div class="files mono">${pr.files.map(esc).join('<br>')}${pr.fileCount > pr.files.length ? '<br>…' : ''}</div>` : ''}
   <div class="row" style="margin-top:14px"><span class="grow"></span><button id="c_cancel">Huỷ</button>${pr.noChange ? '' : '<button class="ok" id="c_push">Đẩy lên</button>'}</div>`);
   $('c_cancel').onclick = async () => { closeModal(); await call('git:cancel', { pairId: pr.pairId }); renderGit(); };
@@ -414,6 +425,16 @@ function showConfirm(pr) {
     if (!message) { toast('Nội dung commit không được để trống.', true); $('c_msg').focus(); return; }
     closeModal(); await call('git:push', { pairId: pr.pairId, message }); renderGit();
   };
+}
+
+function showHistory(p) {
+  if (!p) return;
+  const h = p.history || [];
+  openModal(`<h3>Lịch sử đẩy: ${esc(p.name)}</h3><div class="mute small mono">${esc(p.dstUrl)}</div>
+  ${h.length ? `<div class="files" style="max-height:50vh">${h.map((x, i) => `<div class="pair"><div class="row"><b>${new Date(x.at).toLocaleString()}</b><span class="badge">${esc(x.branch)}</span><span class="mono small">${esc((x.commit || '').slice(0, 10))}</span><span class="grow"></span><button class="sm" data-hcopy="${i}">Copy nội dung</button></div><div style="white-space:pre-wrap">${esc(x.message)}</div><div class="small mute">${x.files || 0} file thay đổi</div></div>`).join('')}</div>` : '<div class="mute">Chưa đẩy lần nào (lịch sử có từ bản 2.8).</div>'}
+  <div class="row" style="margin-top:12px"><span class="grow"></span><button id="h_close">Đóng</button></div>`);
+  $('h_close').onclick = closeModal;
+  document.querySelectorAll('[data-hcopy]').forEach((b) => { b.onclick = () => { navigator.clipboard.writeText(h[+b.dataset.hcopy].message); toast('Đã copy nội dung commit'); }; });
 }
 
 // ------------------------------------------------------------------ translation popup

@@ -728,7 +728,7 @@ const handlers = {
   'git:state': async () => ({
     gitVersion: await G.gitVersion(),
     accounts: store.cfg.gitAccounts.map((a) => ({ ...a, hasToken: store.hasToken(a.id), pub: a.auth === 'ssh' && a.keyPath ? G.readPub(a.keyPath) : '', status: gitStatus[a.id] || null })),
-    pairs: store.cfg.pairs, prepared, task: task && { id: task.id, title: task.title, done: task.done, ok: task.ok, count: task.lines.length },
+    pairs: store.cfg.pairs, profilePairs: Object.fromEntries(store.cfg.profiles.map((p) => [p.id, p.gitPair || null])), prepared, task: task && { id: task.id, title: task.title, done: task.done, ok: task.ok, count: task.lines.length },
   }),
   'git:saveAccount': async (a) => {
     const d = a || {};
@@ -760,6 +760,7 @@ const handlers = {
   },
   'git:deleteAccount': (a) => {
     const used = store.cfg.pairs.filter((p) => p.srcAcc === a.id || p.dstAcc === a.id).map((p) => p.name);
+    store.cfg.profiles.forEach((p) => { if (p.gitPair && (p.gitPair.srcAcc === a.id || p.gitPair.dstAcc === a.id)) used.push(`cặp nick của hồ sơ ${p.name}`); });
     if (used.length) throw new Error('Nick đang dùng trong cặp: ' + used.join(', ') + '. Xoá hoặc đổi cặp trước.');
     const acc = store.cfg.gitAccounts.find((x) => x.id === a.id);
     store.cfg.gitAccounts = store.cfg.gitAccounts.filter((x) => x.id !== a.id);
@@ -783,9 +784,10 @@ const handlers = {
   'git:savePair': (a) => {
     const d = a || {};
     const name = String(d.name || '').trim();
-    if (!name) throw new Error('Đặt tên cho cặp.');
-    const src = store.cfg.gitAccounts.find((x) => x.id === d.srcAcc); const dst = store.cfg.gitAccounts.find((x) => x.id === d.dstAcc);
-    if (!src || !dst) throw new Error('Chọn đủ nick nguồn và nick đích.');
+    if (!name) throw new Error('Đặt tên cho dự án.');
+    const owner = profile(d.profileId); const gp = (owner && owner.gitPair) || {};
+    const src = store.cfg.gitAccounts.find((x) => x.id === (d.srcAcc || gp.srcAcc)); const dst = store.cfg.gitAccounts.find((x) => x.id === (d.dstAcc || gp.dstAcc));
+    if (!src || !dst) throw new Error('Hồ sơ chưa có cặp nick (nguồn → đích). Chọn cặp nick ở đầu tab Git trước.');
     if (src.id === dst.id) throw new Error('Nick nguồn và nick đích phải khác nhau.');
     const srcUrl = G.normUrl(d.srcUrl, src); const dstUrl = G.normUrl(d.dstUrl, dst);
     if (!['newest', 'fixed', 'pattern'].includes(d.srcMode)) d.srcMode = 'newest';
@@ -798,11 +800,23 @@ const handlers = {
       name, color: d.color || '#26a69a', profileId: d.profileId || p.profileId || null,
       srcAcc: src.id, srcUrl, srcMode: d.srcMode, srcBranch: String(d.srcBranch || '').trim(),
       dstAcc: dst.id, dstUrl, dstMode: d.dstMode, dstBranch: String(d.dstBranch || '').trim(),
-      message: String(d.message || '').trim() || 'Sync {branch} @ {sha}',
+      message: String(d.message || '').trim() || G.DEFAULT_MESSAGE,
     });
     delete prepared[p.id];
     store.save();
     return p;
+  },
+  // 2.8: one nick pair per profile (source -> target); every project of the profile uses it
+  'git:saveProfilePair': (a) => {
+    const p = profile(a.profileId); if (!p) throw new Error('Không có hồ sơ này.');
+    const src = store.cfg.gitAccounts.find((x) => x.id === a.srcAcc); const dst = store.cfg.gitAccounts.find((x) => x.id === a.dstAcc);
+    if (!src || !dst) throw new Error('Chọn đủ nick nguồn và nick đích.');
+    if (src.id === dst.id) throw new Error('Nick nguồn và nick đích phải khác nhau.');
+    p.gitPair = { srcAcc: src.id, dstAcc: dst.id };
+    let moved = 0;
+    store.cfg.pairs.forEach((x) => { if (x.profileId === p.id && (x.srcAcc !== src.id || x.dstAcc !== dst.id)) { x.srcAcc = src.id; x.dstAcc = dst.id; delete prepared[x.id]; moved++; } });
+    store.save();
+    return { gitPair: p.gitPair, moved };
   },
   'git:deletePair': (a) => { store.cfg.pairs = store.cfg.pairs.filter((x) => x.id !== a.id); delete prepared[a.id]; store.save(); return true; },
   'git:run': (a) => startGitTask(a.pairId, a.kind),
@@ -846,9 +860,14 @@ function startGitTask(pairId, kind, opts) {
       pair.last = { ...(pair.last || {}), branch: prepared[pair.id].srcBranch, sha: prepared[pair.id].sha, date: prepared[pair.id].srcDate, pulledAt: Date.now() };
     } else {
       let pr = prepared[pair.id]; if (!pr) throw new Error('Chưa chuẩn bị. Bấm Pull + Push trước.');
+      const want = opts && typeof opts.message === 'string' ? opts.message : pr.message;
+      const hits = G.traceInMessage(want, ctx.src, pair.srcUrl, pr.sha);
+      if (hits.length) throw new Error(`Nội dung commit còn dấu vết nguồn (${hits.join(', ')}). Sửa lại nội dung rồi bấm Đẩy lên.`);
       if (opts && typeof opts.message === 'string') pr = prepared[pair.id] = await G.rewordPrepared(pr, opts.message, ctx);   // message edited in the confirm box
       const r = await G.push(pr, ctx);
       pair.last = { ...(pair.last || {}), pushedAt: Date.now(), pushedSha: pr.sha, pushedBranch: pr.dstBranch };
+      // push history of this project (target side only: nothing from the source is recorded here)
+      pair.history = [{ at: Date.now(), branch: pr.dstBranch, commit: r.commit, message: pr.message, files: pr.fileCount }, ...(pair.history || [])].slice(0, 50);
       delete prepared[pair.id];
     }
     store.save();
@@ -975,6 +994,7 @@ app.whenReady().then(() => {
   if (process.env.METATOOLS_UPDATE_SELFTEST) require('./test/selftest-update')({ win, handlers, store, upd, BOOT, confirmStart });
   if (process.env.METATOOLS_UI_SELFTEST) require('./test/selftest-ui')({ win, handlers, store, views });
   if (process.env.METATOOLS_27_SELFTEST) require('./test/selftest-27')({ win, handlers, store, views, events, ensureView, routeLink, gmailPollAll, sleepIdle, current: () => current, ui: (js) => win.webContents.executeJavaScript(js, true) });
+  if (process.env.METATOOLS_28_SELFTEST) require('./test/selftest-28')({ win, handlers, store, ui: (js) => win.webContents.executeJavaScript(js, true) });
   if (process.env.METATOOLS_IME_SELFTEST) require('./test/selftest-ime')({ win, handlers, store, layout, ensureView, refreshBadge, ui: (js) => win.webContents.executeJavaScript(js, true) });
   // automatic update check: 30 s after start, then hourly (each check itself waits 6 h since the last one)
   setTimeout(autoCheck, 30000);

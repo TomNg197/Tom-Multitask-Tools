@@ -1,3 +1,13 @@
+## Tom Multitask 2.8.0
+
+**Git theo dự án:**
+- **Mỗi hồ sơ = 1 cặp nick** (nguồn → đích), chọn ở đầu tab Git. Đổi cặp nick thì mọi dự án của hồ sơ đổi theo.
+- **Nhiều dự án trong 1 cặp nick:** mỗi dự án là 1 repo nguồn + 1 repo đích + quy tắc nhánh; Pull / Pull + Push từng dự án.
+- **Tự gõ nội dung commit khi đẩy** (mẫu điền sẵn: `Cập nhật {branch} {date}`, {branch} = nhánh đích, {date} = ngày đẩy).
+- **Không để lại dấu vết nguồn:** commit đứng tên nick đích; mẫu cũ có mã commit nguồn `{sha}` đã bỏ; nội dung có tên nick/email/repo/mã commit nguồn bị chặn trước khi đẩy.
+- **Lịch sử đẩy từng dự án** (50 lần gần nhất), copy lại nội dung được.
+- Cấu hình cũ tự chuyển, không mất cặp nào.
+
 ## Tom Multitask 2.7 (trước đây là MetaTools)
 
 **Mới ở bản 2.7.1 (đỡ RAM):**

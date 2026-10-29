@@ -55,12 +55,15 @@ Phần Git cần có **Git** trên máy:
      - GitLab: read_repository, write_repository (nick đích) và read_user.
    - **SSH key:** app tự tạo key riêng cho nick (hoặc chọn key có sẵn) và hiện public key để dán lên trang SSH keys. App không đụng `~/.ssh/config`.
 2. Bấm **Kiểm tra**: app hỏi máy chủ token hoặc key đó là ai. Sai nick là chặn. App cũng báo khi token sắp hết hạn.
-3. **+ Thêm cặp:** chọn nick nguồn và repo nguồn, nick đích và repo đích (có thể chọn nick ở hồ sơ khác).
+3. **Cặp nick của hồ sơ (từ bản 2.8):** ở đầu cột phải tab Git, chọn **nick nguồn** (pull về) và **nick đích** (push lên, đứng tên commit) rồi bấm **Lưu cặp nick**. Mỗi hồ sơ có 1 cặp nick, mọi dự án của hồ sơ dùng chung. Đổi cặp nick thì app áp dụng cho tất cả dự án.
+4. **+ Thêm dự án:** mỗi dự án = 1 repo nguồn + 1 repo đích. Một hồ sơ có bao nhiêu dự án cũng được.
    - **Nhánh nguồn:** mới nhất (tự động), cố định, hoặc mới nhất theo mẫu (ví dụ `release/*`).
    - **Nhánh đích:** trùng tên, cố định, hoặc thêm tiền tố (ví dụ `sync/`).
-   - **Nội dung commit:** có các biến `{branch}`, `{sha}`, `{date}`.
-4. **Pull + Push:** app pull về rồi hiện bảng xác nhận (nhánh, số file, người đứng tên commit). Bấm **Đẩy lên** thì app đẩy **1 commit** đứng tên nick đích.
-   - Không mang lịch sử, tên hay email cá nhân sang.
+   - **Mẫu commit:** điền sẵn khi đẩy, có biến `{branch}` (nhánh đích) và `{date}` (ngày đẩy). Không có biến nào lấy thông tin nguồn.
+5. **Pull + Push:** app pull về rồi hiện bảng xác nhận (nhánh, số file, người đứng tên). **Gõ nội dung commit** ở đây (nhiều dòng được) rồi bấm **Đẩy lên**: app đẩy **1 commit** đứng tên nick đích.
+   - Commit không mang lịch sử, nhánh, mã commit, tên hay email của nick nguồn. Nội dung commit có tên nick nguồn, email nguồn, tên repo nguồn hoặc mã commit nguồn sẽ bị **chặn** để sửa lại.
+6. **Lịch sử (n):** mỗi dự án lưu 50 lần đẩy gần nhất (giờ, nhánh, mã commit, nội dung), có nút Copy nội dung.
+   - Cấu hình cũ (≤ 2.7) tự chuyển: cặp nick lấy theo cặp đầu tiên của hồ sơ, mỗi cặp cũ thành 1 dự án; dự án nào đang dùng nick khác sẽ có nhãn **nick khác cặp** cho tới khi bấm Lưu cặp nick.
    - Không bao giờ force push: nếu repo đích vừa có người đẩy thêm, app từ chối và bảo bấm lại.
 
 ## Cập nhật trong app (từ bản 2.3)

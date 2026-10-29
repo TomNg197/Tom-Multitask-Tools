@@ -34,7 +34,13 @@ const pair = { id: 'p1', srcUrl: path.join(D, 'src.git'), dstUrl: path.join(D, '
   chk('pick pattern', G.pickSource(list, { srcMode: 'pattern', srcBranch: 'release/*' }).b.name === 'release/2.0');
   chk('pick fixed', G.pickSource(list, { srcMode: 'fixed', srcBranch: 'main' }).b.name === 'main');
   chk('target prefix', G.targetBranch({ dstMode: 'prefix', dstBranch: 'sync/' }, 'main') === 'sync/main');
-  chk('message tpl', G.commitMessage({ message: '[{date}] {branch}#{sha}' }, { branch: 'main', sha: 'abcdef1234', date: '2026-10-08T00:00' }) === '[2026-10-08] main#abcdef12');
+  const D0 = new Date('2026-10-29T03:00:00Z');
+  chk('message tpl: target branch + push date, no source sha', G.commitMessage({ message: '[{date}] {branch}#{sha}' }, 'sync/main', D0) === '[2026-10-29] sync/main#');
+  chk('message old default cleaned', G.commitMessage({ message: 'Sync {branch} @ {sha}' }, 'main', D0) === 'Sync main');
+  chk('message new default', G.commitMessage({}, 'main', D0) === 'Cập nhật main 2026-10-29');
+  chk('trace: source nick', G.traceInMessage('fix by tomng197', { user: 'TomNg197', email: 'a@b.c' }, 'https://github.com/TomNg197/secret-game', 'abcdef1234').length === 1);
+  chk('trace: source repo + sha', G.traceInMessage('secret-game abcdef1', { user: 'x', email: 'a@b.c' }, 'git@github.com:me/secret-game.git', 'abcdef1234').length === 2);
+  chk('trace: clean message', G.traceInMessage('Cập nhật main 2026-10-29', { user: 'TomNg197', email: 'a@b.c' }, 'https://github.com/TomNg197/secret-game', 'abcdef1234').length === 0);
 
   // T1 first push to empty target
   let p = await G.prepare(pair, ctx);

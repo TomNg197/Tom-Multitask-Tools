@@ -130,6 +130,10 @@ module.exports = async function selftest(ctx) {
     const a3 = await call('git:saveAccount', { profileId: p2.id, label: 'SSH demo', host: 'github.com', user: 'demo', email: 'd@x.vn', auth: 'ssh' });
     chk('ssh key generated', a3.pub.startsWith('ssh-ed25519 '), a3.pub.slice(0, 40));
     const pr = await call('git:savePair', { profileId: p1.id, name: 'Game A → repo công ty', srcAcc: a1.id, srcUrl: path.join(D, 'src.git'), srcMode: 'newest', dstAcc: a2.id, dstUrl: path.join(D, 'tgt.git'), dstMode: 'prefix', dstBranch: 'sync/', message: 'Sync {branch} @ {sha}' });
+    const gpr = await call('git:saveProfilePair', { profileId: p1.id, srcAcc: a1.id, dstAcc: a2.id });
+    chk('2.8 profile nick pair saved', gpr.gitPair.srcAcc === a1.id && gpr.gitPair.dstAcc === a2.id);
+    const pr2 = await call('git:savePair', { profileId: p1.id, name: 'Dự án 2 (dùng cặp nick hồ sơ)', srcUrl: path.join(D, 'src.git'), dstUrl: path.join(D, 'tgt.git'), dstMode: 'fixed', dstBranch: 'proj2' });
+    chk('2.8 project inherits the profile nick pair + clean default message', pr2.srcAcc === a1.id && pr2.dstAcc === a2.id && !/\{sha\}/.test(pr2.message), pr2.message);
     await ui(`selectProfile(${JSON.stringify(p1.id)})`); await ui("selectTab('git')"); await wait(800);
     await shot('04_git_tab');
     await call('git:run', { pairId: pr.id, kind: 'prepare' });
@@ -143,6 +147,21 @@ module.exports = async function selftest(ctx) {
     const br = sh("git branch --format='%(refname:short)'", path.join(D, 'tgt.git'));
     const lg = sh("git log --all --format='%an %ae %B'", path.join(D, 'tgt.git'));
     chk('pushed to sync/main as company nick', br.split('\n').includes('sync/main') && lg.includes('cty dev@metax.vn') && !lg.includes('secret') && !lg.includes('personal'), br + ' | ' + lg);
+    const srcSha = sh('git rev-parse main', path.join(D, 'src.git'));
+    chk('2.8 pushed commit message has no source sha', !lg.includes(srcSha.slice(0, 7)), lg);
+    const hist = (await call('git:state')).pairs.find((x) => x.id === pr.id).history || [];
+    chk('2.8 push history recorded', hist.length === 1 && hist[0].branch === 'sync/main' && !!hist[0].commit, JSON.stringify(hist));
+    // trace guard: a message that names the source commit is refused
+    await call('git:run', { pairId: pr2.id, kind: 'prepare' });
+    for (let i = 0; i < 80 && !(await call('git:log', {})).done; i++) await wait(250);
+    await call('git:push', { pairId: pr2.id, message: 'Lấy từ ' + srcSha.slice(0, 8) });
+    for (let i = 0; i < 80 && !(await call('git:log', {})).done; i++) await wait(250);
+    const lg2 = await call('git:log', {});
+    chk('2.8 message with source trace is blocked', !lg2.ok && lg2.lines.some((l) => /dấu vết nguồn/.test(l.m)), JSON.stringify(lg2.lines.slice(-2)));
+    chk('2.8 nothing pushed to proj2 after the block', !sh("git branch --format='%(refname:short)'", path.join(D, 'tgt.git')).split('\n').includes('proj2'));
+    await call('git:push', { pairId: pr2.id, message: 'Cập nhật proj2' });
+    for (let i = 0; i < 80 && !(await call('git:log', {})).done; i++) await wait(250);
+    chk('2.8 clean message pushes', sh("git branch --format='%(refname:short)'", path.join(D, 'tgt.git')).split('\n').includes('proj2'));
     await ui('renderGit()'); await wait(600);
     await shot('06_git_after');
 
